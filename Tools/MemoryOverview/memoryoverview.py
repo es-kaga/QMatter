@@ -172,10 +172,11 @@ def draw_table(infos: Dict[str, Memory]) -> Tuple[str, str]:
         # "ZCL",
         "MAC",
         "Thread",
-        "CHIP",
+        "Matter",
         "BLE",
         "Security",
         "OS/Libs",
+        "Zigbee",
     ]
 
     messages = ""
@@ -186,7 +187,7 @@ def draw_table(infos: Dict[str, Memory]) -> Tuple[str, str]:
 
     translation = {
         "APP": ["Application", "P345_Matter_DK_Endnodes"],
-        "CHIP": ["Components/ThirdParty/Matter/repo", "CHIP"],
+        "Matter": ["Components/ThirdParty/Matter/repo", "CHIP"],
         "BLE": ["BLE", "BLE Base"],
         "OS/Libs": ["Base",
                     "Bootloader",
@@ -243,7 +244,7 @@ def draw_table(infos: Dict[str, Memory]) -> Tuple[str, str]:
             info.segments['Flash'].size + info.segments["Nvm"].size + info.segments["Ota"].size,
             info.segments['Flash'].totalSize,
             (100 * (1.0 * info.segments['Flash'].size + info.segments["Nvm"].size + info.segments["Ota"].size) /
-             (1.0 * info.segments['Flash'].totalSize)) if ((info.segments["Flash"].size != 0) and (info.segments["Ota"].size != 0)) else 0
+             (1.0 * info.segments['Flash'].totalSize)) if (info.segments["Flash"].size != 0) else 0
         )
 
         # Sanity check for changes in categories from memoryusage

@@ -40,6 +40,7 @@
 #include "qvIO.h"
 
 #include "hal.h"
+#include "timers.h"
 #include "gpHal.h"
 #include "gpSched.h"
 #include "gpBsp.h"
@@ -107,27 +108,6 @@ typedef struct IO_LedBlink_ {
 /* </CodeGenerator Placeholder> Macro */
 
 /*****************************************************************************
- *                    Static Data Definitions
- *****************************************************************************/
-
-#ifndef GP_DIVERSITY_NO_LED
-/* <CodeGenerator Placeholder> StaticData */
-static IO_LedBlink_t IO_LedBlinkInfo[APP_MAX_LED];
-#endif
-
-/** @brief Application callback to handle button changes */
-static qvIO_pBtnCback IO_BtnCallback = NULL;
-#if defined(QVIO_BUTTONS_AVAILABLE)
-/** @brief Button state to indicate changes */
-static UInt8 IO_BtnState = 0x0;
-#endif
-/* </CodeGenerator Placeholder> StaticData */
-
-#ifdef GP_DIVERSITY_QPG6105DK_B01
-static const UInt8 adc_ch_to_pin[] = GP_BSP_ADC_GPIO_MAP;
-UQ2_14 temperatureAdcData;
-#endif
-/*****************************************************************************
  *                    Static Function Definitions
  *****************************************************************************/
 
@@ -138,6 +118,30 @@ static void IO_cbGpioEvent(uint8_t gpioPin);
 #endif
 static void IO_CommonInterruptHandler(void);
 #endif
+/* </CodeGenerator Placeholder> StaticFunctionDefinitions */
+
+/*****************************************************************************
+ *                    Static Data Definitions
+ *****************************************************************************/
+
+#ifndef GP_DIVERSITY_NO_LED
+/* <CodeGenerator Placeholder> StaticData */
+static IO_LedBlink_t IO_LedBlinkInfo[APP_MAX_LED];
+#endif
+
+#if defined(QVIO_BUTTONS_AVAILABLE)
+/** @brief Application callback to handle button changes */
+static qvIO_pBtnCback IO_BtnCallback = NULL;
+/** @brief Button state to indicate changes */
+static UInt8 IO_BtnState = 0x0;
+#endif
+/* </CodeGenerator Placeholder> StaticData */
+
+#ifdef GP_DIVERSITY_QPG6105DK_B01
+static const UInt8 adc_ch_to_pin[] = GP_BSP_ADC_GPIO_MAP;
+UQ2_14 temperatureAdcData;
+#endif
+
 /*****************************************************************************
  * --- LED handling
  *****************************************************************************/
@@ -187,6 +191,7 @@ static void IO_SetWakeUpMode(UInt8 mode)
     hal_gpioSetWakeUpMode(GP_BSP_BUTTON_7, mode);
 #endif // GP_BSP_BUTTON_7
 }
+
 
 #if !defined(GP_DIVERSITY_GPHAL_K8E)
 static void IO_ReArmButtonInterrupts(void)
@@ -329,14 +334,16 @@ static void IO_PollGPIO(void)
 
     if((IO_BtnCallback != NULL) && (IO_BtnState != btnState))
     {
-        IO_BtnCallback(BTN_SW1, BIT_TST(btnState, BTN_SW1));
-        IO_BtnCallback(BTN_SW2, BIT_TST(btnState, BTN_SW2));
-        IO_BtnCallback(BTN_SW3, BIT_TST(btnState, BTN_SW3));
-        IO_BtnCallback(BTN_SW4, BIT_TST(btnState, BTN_SW4));
-        IO_BtnCallback(BTN_SW5, BIT_TST(btnState, BTN_SW5));
+        for(UInt8 btnIdx = 0; btnIdx < sizeof(btnState) * 8; btnIdx++)
+        {
+            bool btnPressed = BIT_TST(btnState, btnIdx);
+            if(btnPressed != BIT_TST(IO_BtnState, btnIdx))
+            {
+                IO_BtnCallback(btnIdx, btnPressed);
+            }
+        }
+        IO_BtnState = btnState;
     }
-
-    IO_BtnState = btnState;
 
     // Re-enable sensing
     IO_SetWakeUpMode(hal_WakeUpModeBoth);
@@ -365,16 +372,26 @@ static void IO_cbExternalEvent(void)
 #endif
 
 #if defined(QVIO_BUTTONS_AVAILABLE)
+static void IO_DeferredGpioEvent(void* pollGpioPt, uint32_t ulParameter2)
+{
+    (void)ulParameter2;
+
+    // Delay check for debouncing of button/signal
+    if(!gpSched_ExistsEvent(pollGpioPt))
+    {
+        gpSched_ScheduleEvent(APP_BUTTON_DEBOUNCE_PERIOD_MS * 1000, pollGpioPt);
+    }
+}
+
 static void IO_CommonInterruptHandler(void)
 {
     // Remove sensing on GPIO's
     IO_SetWakeUpMode(hal_WakeUpModeNone);
 
-    // Delay check for debouncing of button/signal
-    if(!gpSched_ExistsEvent(IO_PollGPIO))
-    {
-        gpSched_ScheduleEvent(APP_BUTTON_DEBOUNCE_PERIOD_MS * 1000, IO_PollGPIO);
-    }
+    // The actual processing is to be deferred to a task
+    BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+    xTimerPendFunctionCallFromISR(IO_DeferredGpioEvent, IO_PollGPIO, 0, &xHigherPriorityTaskWoken);
+    portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
 }
 
 #if(!defined(GP_DIVERSITY_GPHAL_K8E))
@@ -407,8 +424,7 @@ static void IO_InitGPIOWakeUp(void)
 
     // Enable interrupt mask
     gpHal_EnableExternalEventCallbackInterrupt(true);
-#endif
-#if !defined(GP_DIVERSITY_GPHAL_K8E)
+#else
     IO_ConfigureGpioInterruptHandlers();
     IO_ReArmButtonInterrupts();
 #endif
@@ -455,6 +471,7 @@ void qvIO_Init(void)
 #if defined(HAL_DIVERSITY_PWMXL) && defined(GP_BSP_PWMXL_GPIO_MAP)
     Bool retval;
 #endif
+
     IO_InitGPIO();
     IO_InitGPIOWakeUp();
 
@@ -527,7 +544,7 @@ bool qvIO_LedSet(uint8_t ledNr, bool state)
         if(ledNr == LED_WHITE)
         {
             qvIO_PWMSetLevel(PWM_CHANNEL_WHITE_COOL, 0);
-#if defined(GP_BSP_PWM_GPIO_MAP) || defined(GP_BSP_PWMXL_GPIO_MAP)
+#if (defined(GP_BSP_PWM_GPIO_MAP) || defined(GP_BSP_PWMXL_GPIO_MAP))
 #if defined(HAL_DIVERSITY_PWM)
             hal_SetChannelEnabled(PWM_CHANNEL_WHITE_COOL, false);
 #endif
@@ -549,7 +566,7 @@ bool qvIO_LedSet(uint8_t ledNr, bool state)
     {
         if(ledNr == LED_WHITE)
         {
-#if defined(GP_BSP_PWM_GPIO_MAP) || defined(GP_BSP_PWMXL_GPIO_MAP)
+#if (defined(GP_BSP_PWM_GPIO_MAP) || defined(GP_BSP_PWMXL_GPIO_MAP))
 #if defined(HAL_DIVERSITY_PWM)
             hal_SetChannelEnabled(PWM_CHANNEL_WHITE_COOL, true);
 #endif
@@ -627,7 +644,9 @@ bool qvIO_LedBlink(uint8_t ledNr, uint16_t onMs, uint16_t offMs)
 void qvIO_SetBtnCallback(qvIO_pBtnCback btnCback)
 {
     /* <CodeGenerator Placeholder> Implementation_qvIO_SetBtnCallback */
+#if defined(QVIO_BUTTONS_AVAILABLE)
     IO_BtnCallback = btnCback;
+#endif // QVIO_BUTTONS_AVAILABLE
     /* </CodeGenerator Placeholder> Implementation_qvIO_SetBtnCallback */
 }
 
@@ -641,8 +660,8 @@ void qvIO_SetBtnCallback(qvIO_pBtnCback btnCback)
  */
 void qvIO_PWMColorOnOff(bool onoff)
 {
-#if defined(GP_BSP_PWM_GPIO_MAP) || defined(GP_BSP_PWMXL_GPIO_MAP)
     /* <CodeGenerator Placeholder> Implementation_qvIO_PWMColorOnOff */
+#if defined(GP_BSP_PWM_GPIO_MAP) || defined(GP_BSP_PWMXL_GPIO_MAP)
     if(onoff)
     {
         // Enable pwm channels for RGB LED
@@ -679,8 +698,8 @@ void qvIO_PWMColorOnOff(bool onoff)
 
 #endif
     }
-    /* </CodeGenerator Placeholder> Implementation_qvIO_PWMColorOnOff */
 #endif // GP_BSP_PWM_GPIO_MAP
+    /* </CodeGenerator Placeholder> Implementation_qvIO_PWMColorOnOff */
 }
 
 /** @brief sets RGB color of led 255 == 100%
@@ -704,7 +723,6 @@ void qvIO_PWMSetColor(uint8_t r, uint8_t g, uint8_t b)
     halPwmxl_setDutyCycle(PWM_CHANNEL_GREEN, (UInt32)g * PWM_DUTY_CYCLE_MULT);
     halPwmxl_setDutyCycle(PWM_CHANNEL_BLUE, (UInt32)b * PWM_DUTY_CYCLE_MULT);
 #endif
-
 #endif // GP_BSP_PWM_GPIO_MAP
     /* </CodeGenerator Placeholder> Implementation_qvIO_PWMSetColor */
 }
@@ -756,8 +774,10 @@ void qvIO_EnableSleep(bool enable)
             /* Select internal 32kHz RC oscillator */
             gpHal_SetSleepMode(gpHal_SleepModeRC);
         }
+
         hal_SleepSetGotoSleepThreshold(APP_GOTOSLEEP_THRESHOLD);
     }
+
     hal_SleepSetGotoSleepEnable(enable);
 }
 

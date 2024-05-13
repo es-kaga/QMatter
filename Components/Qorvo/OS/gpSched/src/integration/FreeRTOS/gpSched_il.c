@@ -51,6 +51,9 @@
 
 #include "gpLog.h"
 
+#if defined(GP_SCHED_DIVERSITY_RUN_ON_SCHED)
+#include "gpSched_runOn.h"
+#endif
 /*****************************************************************************
  *                    Macro Definitions
  *****************************************************************************/
@@ -173,6 +176,9 @@ static void Sched_Main(void* params)
         {
             GP_UTILS_CPUMON_NEW_SCHEDULER_LOOP();
             gpSched_Main_Body();
+#if defined(GP_SCHED_DIVERSITY_RUN_ON_SCHED)
+            gpSched_RunOnMainLoopReached();
+#endif
             while((!gpSched_EventQueueEmpty() && (timerScheduled == false)) || (HAL_RADIO_INT_CHECK_IF_OCCURED()))
             {
                 gpSched_Main_Body();

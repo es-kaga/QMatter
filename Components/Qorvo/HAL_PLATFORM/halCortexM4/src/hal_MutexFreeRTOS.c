@@ -49,6 +49,7 @@
 #endif //HAL_MUTEX_SUPPORTED
 
 #ifndef HAL_MAX_NUMBER_USED_STATIC_MUTEX
+// Default based on typical use throughout stack.
 #define HAL_MAX_NUMBER_USED_STATIC_MUTEX 12
 #endif
 

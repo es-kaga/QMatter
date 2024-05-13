@@ -75,12 +75,50 @@ void MacCore_HalDataIndication_orgrom(gpPd_Loh_t pdLoh, gpHal_RxInfo_t *rxInfo);
  *                    Macro Definitions
  *****************************************************************************/
 
+// virtual window shift for the jump table is only on k8e
+#if defined(GP_DIVERSITY_GPHAL_K8E)
+#define VIRTUAL_WINDOW_SHIFT (GP_MM_FLASH_VIRT_WINDOWS_START - GP_MM_FLASH_START)
+#else
+#define VIRTUAL_WINDOW_SHIFT (0)
+#endif
+
+// copied from global.h
+#define JUMPTABLE_FLASHTYPEDEF(rtype, func, ...) rtype JUMPTABLE_FLASH(func)(__VA_ARGS__)
+#define JUMPTABLE_FLASH(func)                    flash_jump_##func
+
+#define JUMPTABLE_FLASH_ENTRY(func) (void_func)((UInt32)(flash_jump_##func) + (VIRTUAL_WINDOW_SHIFT))
+
+/*****************************************************************************
+ *                    Declare flashjumptable entries
+ *****************************************************************************/
+
+// Adapted from gpMacCore_defs_Main.h
+#if defined(GP_MACCORE_DIVERSITY_SCAN_ACTIVE_ORIGINATOR) || defined(GP_MACCORE_DIVERSITY_SCAN_ACTIVE_RECIPIENT)
+JUMPTABLE_FLASHTYPEDEF(void, MacCore_DoActiveScan, void);
+#endif // #if defined (GP_MACCORE_DIVERSITY_SCAN_ACTIVE_ORIGINATOR) || defined
+       // (GP_MACCORE_DIVERSITY_SCAN_ACTIVE_RECIPIENT)
+#if defined GP_MACCORE_DIVERSITY_SCAN_ORPHAN_ORIGINATOR || defined GP_MACCORE_DIVERSITY_SCAN_ORPHAN_RECIPIENT
+JUMPTABLE_FLASHTYPEDEF(void, MacCore_DoOrphanScan, void);
+#endif // #if defined GP_MACCORE_DIVERSITY_SCAN_ORPHAN_ORIGINATOR || defined GP_MACCORE_DIVERSITY_SCAN_ORPHAN_RECIPIENT
+#ifdef GP_MACCORE_DIVERSITY_POLL_ORIGINATOR
+JUMPTABLE_FLASHTYPEDEF(void, MacCore_DelayedPollConfirm, void);
+#endif // GP_MACCORE_DIVERSITY_POLL_ORIGINATOR
+#if(GP_MACCORE_SCAN_RXOFFWINDOW_TIME_US != 0)
+JUMPTABLE_FLASHTYPEDEF(void, MacCore_ScanRxOffWindow, void);
+#endif // (GP_MACCORE_SCAN_RXOFFWINDOW_TIME_US != 0)
+#if defined(GP_MACCORE_DIVERSITY_FFD) || defined(GP_MACCORE_DIVERSITY_ASSOCIATION_ORIGINATOR)
+// Assocation Request related
+JUMPTABLE_FLASHTYPEDEF(void, MacCore_AssociateSendCommandDataRequest, void);
+#ifdef GP_ROM_PATCHED_MacCore_AssociateTimeout
+JUMPTABLE_FLASHTYPEDEF(void, MacCore_AssociateTimeout, void);
+#endif // GP_ROM_PATCHED_MacCore_AssociateTimeout
+#endif // defined(GP_MACCORE_DIVERSITY_FFD) || defined(GP_MACCORE_DIVERSITY_ASSOCIATION_ORIGINATOR)
+
 /*****************************************************************************
  *                    Patched Function(s)
  *****************************************************************************/
 
 #if (GPJUMPTABLES_MIN_ROMVERSION < ROMVERSION_FIXFORPATCH_MACCORE_ASSOCTIMEOUT)
-#ifdef GP_MACCORE_DIVERSITY_ASSOCIATION_ORIGINATOR
 void MacCore_StopRunningRequests_patched(gpMacCore_StackId_t stackId)
 {
 #if defined(GP_MACCORE_DIVERSITY_SCAN_ACTIVE_ORIGINATOR)  || \
@@ -89,12 +127,17 @@ void MacCore_StopRunningRequests_patched(gpMacCore_StackId_t stackId)
     if(GP_MACCORE_GET_GLOBALS()->gpMacCore_pScanState && (stackId == GP_MACCORE_GET_GLOBALS()->gpMacCore_pScanState->stackId))
     {
 #ifdef GP_MACCORE_DIVERSITY_SCAN_ACTIVE_ORIGINATOR
+        // if we're not sure if the function has been scheduled from ROM code or from flash code: unschedule both
+        // possibilities.
+        gpSched_UnscheduleEvent(JUMPTABLE_FLASH_ENTRY(MacCore_DoActiveScan));
         gpSched_UnscheduleEvent(MacCore_DoActiveScan);
 #endif //GP_MACCORE_DIVERSITY_SCAN_ACTIVE_ORIGINATOR
 #ifdef GP_MACCORE_DIVERSITY_SCAN_ORPHAN_ORIGINATOR
+        gpSched_UnscheduleEvent(JUMPTABLE_FLASH_ENTRY(MacCore_DoOrphanScan));
         gpSched_UnscheduleEvent(MacCore_DoOrphanScan);
 #endif //GP_MACCORE_DIVERSITY_SCAN_ORPHAN_ORIGINATOR
 #if (GP_MACCORE_SCAN_RXOFFWINDOW_TIME_US != 0)
+        gpSched_UnscheduleEvent(JUMPTABLE_FLASH_ENTRY(MacCore_ScanRxOffWindow));
         gpSched_UnscheduleEvent(MacCore_ScanRxOffWindow);
 #endif //(GP_MACCORE_SCAN_RXOFFWINDOW_TIME_US != 0)
         gpPoolMem_Free(GP_MACCORE_GET_GLOBALS()->gpMacCore_pScanState);
@@ -110,16 +153,20 @@ void MacCore_StopRunningRequests_patched(gpMacCore_StackId_t stackId)
     if(GP_MACCORE_GET_GLOBALS()->gpMacCore_pPollReqArgs && stackId == GP_MACCORE_GET_GLOBALS()->gpMacCore_pPollReqArgs->stackId)
     {
 #ifdef GP_MACCORE_DIVERSITY_ASSOCIATION_ORIGINATOR
+        gpSched_UnscheduleEvent(JUMPTABLE_FLASH_ENTRY(MacCore_AssociateSendCommandDataRequest));
         gpSched_UnscheduleEvent(MacCore_AssociateSendCommandDataRequest);
+#ifdef GP_ROM_PATCHED_MacCore_AssociateTimeout
+        gpSched_UnscheduleEvent(JUMPTABLE_FLASH_ENTRY(MacCore_AssociateTimeout));
+#endif // GP_ROM_PATCHED_MacCore_AssociateTimeout
         gpSched_UnscheduleEvent(MacCore_AssociateTimeout);
 #endif //GP_MACCORE_DIVERSITY_ASSOCIATION_ORIGINATOR
+        gpSched_UnscheduleEvent(JUMPTABLE_FLASH_ENTRY(MacCore_DelayedPollConfirm));
         gpSched_UnscheduleEvent(MacCore_DelayedPollConfirm);
         gpPoolMem_Free(GP_MACCORE_GET_GLOBALS()->gpMacCore_pPollReqArgs);
         GP_MACCORE_GET_GLOBALS()->gpMacCore_pPollReqArgs = NULL;
     }
 #endif //GP_MACCORE_DIVERSITY_POLL_ORIGINATOR
 }
-#endif //GP_MACCORE_DIVERSITY_ASSOCIATION_ORIGINATOR
 #endif //#if (GPJUMPTABLES_MIN_ROMVERSION < ROMVERSION_FIXFORPATCH_MACCORE_ASSOCTIMEOUT)
 
 #if (GPJUMPTABLES_MIN_ROMVERSION < ROMVERSION_FIXFORPATCH_MACCORE_ASSOCTIMEOUT)
@@ -219,7 +266,11 @@ void MacCore_HandleAssocConf_patched(void)
     gpPoolMem_Free(GP_MACCORE_GET_GLOBALS()->gpMacCore_pPollReqArgs);
     GP_MACCORE_GET_GLOBALS()->gpMacCore_pPollReqArgs = NULL;
 
+    gpSched_UnscheduleEvent(JUMPTABLE_FLASH_ENTRY(MacCore_AssociateSendCommandDataRequest));
     gpSched_UnscheduleEvent(MacCore_AssociateSendCommandDataRequest);
+#ifdef GP_ROM_PATCHED_MacCore_AssociateTimeout
+    gpSched_UnscheduleEvent(JUMPTABLE_FLASH_ENTRY(MacCore_AssociateTimeout));
+#endif // GP_ROM_PATCHED_MacCore_AssociateTimeout
     gpSched_UnscheduleEvent(MacCore_AssociateTimeout);
     gpMacCore_cbAssociateConfirm(assocShortAddress, status, txTime);
 }
@@ -305,7 +356,7 @@ void gpMacCore_AssociateRequest_patched(UInt8 logicalChannel , gpMacCore_Address
 #ifdef GP_ROM_PATCHED_MacCore_StopRunningRequests
 void MacCore_StopRunningRequests(gpMacCore_StackId_t stackId)
 {
-#if (GPJUMPTABLES_MIN_ROMVERSION < ROMVERSION_FIXFORPATCH_MACCORE_ASSOCTIMEOUT) && defined(GP_MACCORE_DIVERSITY_ASSOCIATION_ORIGINATOR)
+#if(GPJUMPTABLES_MIN_ROMVERSION < ROMVERSION_FIXFORPATCH_MACCORE_ASSOCTIMEOUT)
     if(gpJumpTables_GetRomVersion() < ROMVERSION_FIXFORPATCH_MACCORE_ASSOCTIMEOUT)
     {
         MacCore_StopRunningRequests_patched(stackId);
@@ -379,15 +430,15 @@ void gpMacCore_AssociateRequest(UInt8 logicalChannel , gpMacCore_AddressInfo_t* 
 }
 #endif //GP_ROM_PATCHED_gpMacCore_AssociateRequest
 
-#ifdef GP_ROM_PATCHED_MacCore_AssociateTimeout
 #if defined(GP_MACCORE_DIVERSITY_ASSOCIATION_ORIGINATOR)
 void MacCore_AssociateTimeout(void)
 {
     // just needs to be empty
 }
 #endif //defined(GP_MACCORE_DIVERSITY_ASSOCIATION_ORIGINATOR)
-#endif //GP_ROM_PATCHED_MacCore_AssociateTimeout
 
+#ifdef GP_ROM_PATCHED_MacCore_HalDataIndication
+#if (!(defined(GP_MACCORE_DIVERSITY_SECURITY_ENABLED)) || !(defined(GP_MACCORE_DIVERSITY_RAW_FRAMES)))
 void MacCore_HalDataIndication_patched(gpPd_Loh_t pdLoh, gpHal_RxInfo_t *rxInfo)
 {
     MacCore_HeaderDescriptor_t mdi;
@@ -469,12 +520,18 @@ void MacCore_HalDataIndication_patched(gpPd_Loh_t pdLoh, gpHal_RxInfo_t *rxInfo)
             {
                 pdLoh_backup.handle = gpPd_CopyPd( pdLoh.handle );
                 GP_LOG_PRINTF("Raw1 gpMacCore_cbDataIndication st=%d seq=%d",0, stackid, mdi.sequenceNumber);
+#if defined(GP_HAL_DIVERSITY_RAW_FRAME_ENCRYPTION)
+                MacCore_StoreLinkMetrics(&mdi, pdLoh_backup);
+#endif // defined(GP_HAL_DIVERSITY_RAW_FRAME_ENCRYPTION)
                 gpMacCore_cbDataIndication(&mdi.srcAddrInfo, &mdi.dstAddrInfo,mdi.sequenceNumber, &mdi.secOptions, pdLoh_backup, stackid);
             }
         }
         if((mdi.stackId != GP_MACCORE_STACK_UNDEFINED) && (gpMacCore_GetBeaconPayloadLength(mdi.stackId) == 0xFF))
         {
             //GP_LOG_SYSTEM_PRINTF("Raw2 gpMacCore_cbDataIndication st=%d seq=%d",0, mdi.stackId, mdi.sequenceNumber);
+#if defined(GP_HAL_DIVERSITY_RAW_FRAME_ENCRYPTION)
+            MacCore_StoreLinkMetrics(&mdi, pdLoh_backup);
+#endif // defined(GP_HAL_DIVERSITY_RAW_FRAME_ENCRYPTION)
             gpMacCore_cbDataIndication(&mdi.srcAddrInfo, &mdi.dstAddrInfo,mdi.sequenceNumber, &mdi.secOptions, pdLoh_backup, mdi.stackId);
             return;
         }
@@ -566,3 +623,5 @@ void MacCore_HalDataIndication(gpPd_Loh_t pdLoh, gpHal_RxInfo_t *rxInfo)
 #endif
     MacCore_HalDataIndication_orgrom(pdLoh, rxInfo);
 }
+#endif
+#endif // def GP_ROM_PATCHED_MacCore_HalDataIndication

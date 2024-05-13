@@ -211,3 +211,11 @@ UInt8 gpPad_GetMaxBeRetransmit(gpPad_Handle_t padHandle)
 {
     return Pad_GetMaxBeRetransmit(padHandle);
 }
+void gpPad_SetCcaFailureAsNoAck(gpPad_Handle_t padHandle, Bool ccaFailureAsNoAck)
+{
+    Pad_SetCcaFailureAsNoAck(padHandle, ccaFailureAsNoAck);
+}
+Bool gpPad_GetCcaFailureAsNoAck(gpPad_Handle_t padHandle)
+{
+    return Pad_GetCcaFailureAsNoAck(padHandle);
+}

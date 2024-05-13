@@ -90,4 +90,10 @@ default = {"Components/Qorvo/BaseUtils": {"gpEncryption": [],
            "cryptosoc": {},
            "cordio-r19-02": {"ble-host": ["sec"], },
            "uECC": {},
-           },
+           }
+
+archives = {
+    "libmbedcrypto": [],
+    "libmbedtls": [],
+    "libccrypto": [],
+}

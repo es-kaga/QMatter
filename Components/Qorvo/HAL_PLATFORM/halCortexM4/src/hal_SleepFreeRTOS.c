@@ -42,7 +42,6 @@
 #include "gpCom.h"
 #endif
 
-
 #include "FreeRTOS.h"
 #include "semphr.h"
 
@@ -142,11 +141,12 @@ void vPortSuppressTicksAndSleep(TickType_t xExpectedIdleTime)
         UInt32 endSleepTimeUsWithOffset = 0;
         UInt32 systickLoad = SysTick->LOAD;
 
+        // Save state of timer for calibrations
         UInt16 calibTimerVal;
         UInt16 calibTimerEnable;
         UInt16 calibTimerThres;
         calibTimerVal = halTimer_getTimerValue(HAL_CALIBRATION_TIMER);
-        calibTimerEnable = BIT_TST(GP_WB_READ_TIMERS_TMR_ENABLES(), HAL_CALIBRATION_TIMER);
+        calibTimerEnable = halTimer_isEnabledTimer(HAL_CALIBRATION_TIMER);
         calibTimerThres = halTimer_getThreshold(HAL_CALIBRATION_TIMER);
 
         if(xExpectedIdleTime > HAL_SLEEP_MAX_SLEEP_TIME / MS_TO_US(1))
@@ -231,6 +231,7 @@ void vPortSuppressTicksAndSleep(TickType_t xExpectedIdleTime)
 
         if ((endSleepTimeUs - beginSleepTimeUs) > 1000) // deep sleep
         {
+            // Restore state of timer for calibrations
             GP_LOG_PRINTF("CT: val:%d, thr:%d, mask:0x%X", 0,
                                  halTimer_getTimerValue(HAL_CALIBRATION_TIMER),
                                  halTimer_getThreshold(HAL_CALIBRATION_TIMER),

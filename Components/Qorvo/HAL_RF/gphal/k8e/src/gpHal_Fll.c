@@ -54,12 +54,16 @@ static Bool FllCalibrationInProgress = false;
 static Bool FllCalibrateInterruptContext = false;
 // CW turned off so that radio is freed for FLL calibration to proceed
 static Bool FllCalibrate_CWToggledOff = false;
+
+#if defined(GP_COMP_GPHAL_MAC) || defined(GP_COMP_GPHAL_BLE)
 // callback triggered once radio is granted
 static void FllCalibrateRadioMgmtCallback(void);
+#endif // defined(GP_COMP_GPHAL_MAC) || defined(GP_COMP_GPHAL_BLE)
 
 // Start FLL calibration (claims radio asynchronously)
 void FllCalibrateStart(void);
 
+#if defined(GP_COMP_GPHAL_MAC) || defined(GP_COMP_GPHAL_BLE)
 // clear FLL OOR/OOL interrupts after fll calibration
 static void FllCalibrateClearFllInterrupts(void);
 
@@ -91,7 +95,7 @@ static void FllCalibrateClearFllInterrupts(void)
     }
     FllCalibrateInterruptContext = false;
 }
-
+#endif // defined(GP_COMP_GPHAL_MAC) || defined(GP_COMP_GPHAL_BLE)
 
 void gpHal_FllInit(void)
 {
@@ -162,7 +166,6 @@ void FllCalibrateStart(void)
 #endif
 
     GP_LOG_PRINTF("[FLL CAL]: start", 0);
-    GP_STAT_SAMPLE_TIME();
 
 #if defined(GP_COMP_GPHAL_MAC) || defined(GP_COMP_GPHAL_BLE)
     gpHalRadioMgmt_status claimStatus;
@@ -184,6 +187,7 @@ void FllCalibrateStart(void)
 #endif
 }
 
+#if defined(GP_COMP_GPHAL_MAC) || defined(GP_COMP_GPHAL_BLE)
 /* Peform actual calibration after radio is granted */
 static void FllCalibrateRadioMgmtCallback(void)
 {
@@ -208,7 +212,6 @@ static void FllCalibrateRadioMgmtCallback(void)
     gpHalMac_RecalibrateChannels();
 #endif
 
-    GP_STAT_SAMPLE_TIME();
     gpHal_ClearCalibrationPendingOnWakeup(calTaskHandle);
 
     FllCalibrationInProgress = false;
@@ -220,7 +223,7 @@ static void FllCalibrateRadioMgmtCallback(void)
     }
 
 }
-
+#endif // defined(GP_COMP_GPHAL_MAC) || defined(GP_COMP_GPHAL_BLE)
 
 void gpHal_FllCalibrate(const gpHal_CalibrationTask_t* task)
 {
@@ -319,4 +322,3 @@ void gpHal_FllHandleInterrupts()
         }
     }
 }
-

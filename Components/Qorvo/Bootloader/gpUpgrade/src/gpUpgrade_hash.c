@@ -181,7 +181,7 @@ UInt32 gpUpgrade_HashImageCrc(gpUpgrade_Table_t swUpgTab)
 
     crcVal ^= GP_UTILS_CRC32_FINAL_XOR_VALUE;
 
-#if defined(GP_DIVERSITY_GPHAL_K8E)
+#if defined(GP_DIVERSITY_GPHAL_K8E) 
     if ( swUpgTab.flagStatus & GP_UPGRADE_FLAG_JUMPTABLE_UPGRADE )
     {
         gpUpgrade_HashPartialCrc(&crcVal,

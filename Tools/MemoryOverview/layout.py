@@ -5,10 +5,10 @@ import csv
 from typing import Dict, List
 
 try:
-    from gppy.tools.memory.categorization.chip import CategorizationCHIP as categorization
+    from gppy.tools.memory.categorization.full import CategorizationFull as categorization
 except ImportError:
     try:
-        from chip import CategorizationCHIP as categorization
+        from full import CategorizationFull as categorization
     except ImportError:
         print("Using outside of Env ?")
 

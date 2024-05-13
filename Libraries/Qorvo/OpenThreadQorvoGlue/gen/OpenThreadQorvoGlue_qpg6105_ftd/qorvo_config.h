@@ -107,6 +107,9 @@
  * Component: halCortexM4
  */
 
+/* Maximum size reserved for RT in flash. */
+#define GP_DIVERSITY_RT_SYSTEM_MAX_FLASH_SIZE                   0x2000
+
 /* Set if hal has real mutex capability. Used to skip even disabling/enabling global interrupts. */
 #define HAL_MUTEX_SUPPORTED
 

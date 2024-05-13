@@ -57,7 +57,7 @@
 #define FLASH_RANGE_IN_SINGLE_SECTOR(address, length)   ((length) <= (FLASH_SECTOR_SIZE - ((address) % FLASH_SECTOR_SIZE)))
 #define FLASH_TO_SECTOR_END(address)                    (FLASH_SECTOR_SIZE - ((address) % FLASH_SECTOR_SIZE))
 
-#if defined(GP_DIVERSITY_GPHAL_K8E)
+#if defined(GP_DIVERSITY_GPHAL_K8E) 
 #ifdef GP_UPGRADE_DIVERSITY_COMPRESSION
 // For compression use cases the position of the jumptable is fixed before the OTA area
 #define GP_OTA_JT_FLASH_START                           (GP_OTA_FLASH_START - GP_UPGRADE_APP_JUMP_TABLE_SIZE)
@@ -257,25 +257,29 @@ UInt32 gpUpgrade_GetOtaAreaStartAddress(void)
 
 UInt32 gpUpgrade_GetJumptableOtaAreaStartAddress(void)
 {
-#if defined(GP_DIVERSITY_GPHAL_K8E)
+#if defined(GP_DIVERSITY_GPHAL_K8E) 
     return GP_OTA_JT_FLASH_START;
 #else
     return 0;
-#endif //defined(GP_DIVERSITY_GPHAL_K8C) || defined(GP_DIVERSITY_GPHAL_K8D) || defined(GP_DIVERSITY_GPHAL_K8E)
+#endif // defined(GP_DIVERSITY_GPHAL_K8C) || defined(GP_DIVERSITY_GPHAL_K8D) || defined(GP_DIVERSITY_GPHAL_K8E)
 }
 
 UInt32 gpUpgrade_GetJumptableOtaAreaSize(void)
 {
-#if defined(GP_DIVERSITY_GPHAL_K8E)
+#if defined(GP_DIVERSITY_GPHAL_K8E) 
     return GP_OTA_JT_FLASH_END - GP_OTA_JT_FLASH_START;
 #else
     return 0;
-#endif //defined(GP_DIVERSITY_GPHAL_K8C) || defined(GP_DIVERSITY_GPHAL_K8D) || defined(GP_DIVERSITY_GPHAL_K8E)
+#endif // defined(GP_DIVERSITY_GPHAL_K8C) || defined(GP_DIVERSITY_GPHAL_K8D) || defined(GP_DIVERSITY_GPHAL_K8E)
 }
 
 UInt32 gpUpgrade_GetOtaAreaSize(void)
 {
+#if defined(GP_DIVERSITY_GPHAL_K8E) 
     return GP_OTA_FLASH_END - GP_OTA_FLASH_START;
+#else
+    return 0;
+#endif
 }
 
 void gpUpgrade_StartWrite(void)

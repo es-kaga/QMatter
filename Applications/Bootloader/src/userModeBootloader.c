@@ -207,6 +207,15 @@ void Bootloader_JumpToApp(UInt32 startAddress)
 /* Bootloader panic handling, spin lock */
 void Bootloader_Panic(void)
 {
+    // Set the program loaded completed magic word, the license got extracted with the app and the
+    // MW is therefore not yet set
+    // Save the MW unconditionally so that even in the case of erroneous decompression we can try to run the existing
+    // image
+    // --- protection against blocking the device ---
+    UInt32 AppLoadCompMW = LOADED_USER_LICENSE_LOAD_COMPLETED_MAGIC_WORD;
+    gpHal_FlashProgramSector(app_StartAddr_Active + USER_LICENSE_LOAD_COMPLETED_MAGIC_WORD_OFFSET,
+                             sizeof(AppLoadCompMW), (UInt8*)&AppLoadCompMW);
+
     HAL_WAIT_MS(5000);
     GP_WB_WRITE_PMUD_SOFT_POR_BOOTLOADER(1);
     while(1)
@@ -324,28 +333,51 @@ int main(void)
             }
 
 #else /* GP_DIVERSITY_APP_LICENSE_BASED_BOOT */
+#if defined(GP_DIVERSITY_LOG)
+            GP_LOG_SYSTEM_PRINTF("App license based", 0);
+#endif
             /* select the application that is most recent (highest freshness counter) */
 #if defined(GP_APP_DIVERSITY_SECURE_BOOTLOADER)
-            gpUpgrade_SecureBoot_selectActiveApplication();
-#else
-            gpUpgrade_Status_t status = gpUpgrade_selectActiveApplication();
-            if(gpUpgrade_StatusSuccess != status)
-            {
 #if defined(GP_DIVERSITY_LOG)
-                GP_LOG_SYSTEM_PRINTF("ERR: Upgrade error: %d - Bootloader_Panic", 0, status);
+            GP_LOG_SYSTEM_PRINTF("Secure bootloader", 0);
 #endif
-                Bootloader_Panic();
+            gpUpgrade_SecureBoot_selectActiveApplication();
+#else //! GP_APP_DIVERSITY_SECURE_BOOTLOADER
+
+            gpUpgrade_ImagePending_t imagePending = gpUpgrade_PendingImageType();
+#if   defined(GP_UPGRADE_DIVERSITY_USE_EXTSTORAGE) || defined(GP_UPGRADE_DIVERSITY_COMPRESSION)
+            if(imagePending == gpUpgrade_ImagePending_LoadedUpperFlashImage)
+            {
+                gpUpgrade_Status_t status = gpUpgrade_AppLicenseInstallImage();
+                if(status != gpUpgrade_StatusSuccess && status != gpUpgrade_StatusPreCheckFailed)
+                {
+#if defined(GP_DIVERSITY_LOG)
+                    GP_LOG_SYSTEM_PRINTF("ERR: Upgrade error: %d - Bootloader_Panic", 0, status);
+#endif
+                    Bootloader_Panic();
+                }
             }
-#endif
+            if(imagePending == gpUpgrade_ImagePending_NoImage)
+            {
+                // run installed application
+            }
+#endif /* GP_APP_DIVERSITY_USE_FLASH_REMAPPING */
+#endif /* GP_APP_DIVERSITY_SECURE_BOOTLOADER */
 #endif /* GP_DIVERSITY_APP_LICENSE_BASED_BOOT */
         }
     }
-
-    memcpy((void*)&magicWord, (void*)(app_StartAddr_Active + USER_LICENSE_PROGRAM_LOADED_MAGIC_WORD_OFFSET), 4);
+    /*ERROR: for flash remapping upgrades,
+      the swapping (upgrade) has not happened yet here (will happen in the jump_to_application instead),
+      so the old application is validated here instead of the new one.
+      Either we pull in the jump to application (assuming the bootloader runs from "direct memory addressing,
+      rather than remappable memory addressing") and keep this check, or we move this check to the jump_to_application
+      function
+     */
+    memcpy((void*)&magicWord, (void*)(app_StartAddr_Active + USER_LICENSE_LOAD_COMPLETED_MAGIC_WORD_OFFSET), 4);
 #if defined(GP_DIVERSITY_LOG)
-    GP_LOG_SYSTEM_PRINTF("Magic word: %lx", 0, magicWord);
+    GP_LOG_SYSTEM_PRINTF("Magic word load completed: %lx", 0, magicWord);
 #endif
-    if (magicWord != USER_LICENSE_PROGRAM_LOADED_MAGIC_WORD)
+    if(magicWord != LOADED_USER_LICENSE_LOAD_COMPLETED_MAGIC_WORD)
     {
 #ifdef GP_DIVERSITY_LOG
         GP_LOG_SYSTEM_PRINTF("Start 0x%lx", 0, app_StartAddr_Active);

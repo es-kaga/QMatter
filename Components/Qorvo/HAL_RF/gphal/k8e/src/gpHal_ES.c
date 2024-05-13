@@ -42,7 +42,6 @@
 #include "gpHal_Calibration.h"
 #include "gpAssert.h"
 #include "gpSched.h"
-#include "gpStat.h"
 #include "gpHal_OscillatorBenchmark.h"
 /*****************************************************************************
  *                    Macro Definitions
@@ -639,8 +638,7 @@ void gpHalEs_PrepareOscillatorBenchmark(gpHal_SleepMode_t mode)
         GP_WB_WRITE_ES_OSCILLATOR_BENCHMARK_LP_TICKS_THRESHOLD(nofLpTicks - 1);
         /* GP_LOG_SYSTEM_PRINTF("<-- RC bm trigger nof_lp_ticks %d keepAwake %d",0, nofLpTicks, keepAwake); */
         /* Log when the RC calibration is triggered */
-        GP_STAT_SAMPLE_TIME();
-   }
+    }
     else if(gpHal_SleepMode32kHz == mode)
     {
         GP_WB_WRITE_ES_OSCILLATOR_BENCHMARK_CLK_SRC(GP_WB_ENUM_OSCBENCHMARK_CLOCK_SRC_XT32K_CLOCK);
@@ -853,7 +851,6 @@ void gpHalES_OscillatorBenchmarkDone_Handler(void)
     {
         /*GP_LOG_SYSTEM_PRINTF("--> bm interrupt bm_val = %ld bm_mode = %d",0, benchmark, gpHal_background_benchmark_mode);*/
         /* Log when the RC calibration interrupt is handled */
-        GP_STAT_SAMPLE_TIME();
         if (benchmark != GPHAL_ES_BENCHMARK_COUNTER_INVALID)
         {
             gpHal_SleepModeRC_stable_benchmark = gpHalES_FilterRCBenchmarkMeasurement(benchmark);
@@ -1221,4 +1218,3 @@ void gpHal_ResetTime(void)
 
     ENABLE_GP_GLOBAL_INT();
 }
-

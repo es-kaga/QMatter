@@ -133,6 +133,17 @@ typedef UInt8                            gpUpgrade_FlashLoadSource_t;
 //@}
 #endif // GP_UPGRADE_DIVERSITY_USE_EXTSTORAGE
 
+#define gpUpgrade_ImagePending_NoImage                       0x00
+#define gpUpgrade_ImagePending_LoadedUpperFlashImage         0x01
+#define gpUpgrade_ImagePending_LoadedLowerAndUpperFlashImage 0x02
+/** @typedef gpUpgrade_ImagePending_t
+    @brief Pending image status
+
+    @li @c gpUpgrade_ImagePending_NoImage                           No pending image upgrade found
+    @li @c gpUpgrade_ImagePending_LoadedUpperFlashImage             Found upgrade image loaded in upper flash
+    @li @c gpUpgrade_ImagePending_LoadedLowerAndUpperFlashImages    Found upgrade images loaded in Lower and upper flash
+*/
+typedef UInt8 gpUpgrade_ImagePending_t;
 /*****************************************************************************
  *                    Macro Definitions
  *****************************************************************************/
@@ -326,6 +337,16 @@ void gpUpgrade_SetPendingToActive(void);
 
 
 #else /* GP_DIVERSITY_APP_LICENSE_BASED_BOOT */
+
+/** @brief This function returns type of pending image for installation. Intended for bootloader implementation.
+ *   @return pending                  Returns:
+ *   @li @c gpUpgrade_ImagePending_NoImage                           No pending image upgrade found
+ *   @li @c gpUpgrade_ImagePending_LoadedUpperFlashImage             Found upgrade image loaded in upper flash
+ *   @li @c gpUpgrade_ImagePending_LoadedLowerAndUpperFlashImages    Found upgrade images loaded in Lower and upper
+ * flash
+ */
+gpUpgrade_ImagePending_t gpUpgrade_PendingImageType(void);
+
 #if defined(GP_APP_DIVERSITY_SECURE_BOOTLOADER)
 
 /** @brief Bootloader API (license based boot, secure boot): lock out write access to boot loader flash region and
@@ -347,10 +368,15 @@ void gpUpgrade_SecureBoot_selectActiveApplication(void);
 
 
 #else
-/** @brief Bootloader API (license based boot, no secure boot): select freshest application image and swap flash areas
-*                     if needed.
-*/
-gpUpgrade_Status_t gpUpgrade_selectActiveApplication(void);
+/** @brief Bootloader API (license based boot, no secure boot): select freshest application image
+ */
+void gpUpgrade_SelectActiveApplication(void);
+
+/** @brief This function returns status of pending image installation. Intended for bootloader implementation.
+ *   @return status                  Returns: gpUpgrade_Status_t
+ */
+gpUpgrade_Status_t gpUpgrade_AppLicenseInstallImage(void);
+
 #endif
 #endif /* GP_DIVERSITY_APP_LICENSE_BASED_BOOT */
 

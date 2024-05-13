@@ -34,7 +34,6 @@ USER_LICENSE_BULK_ERASE_LOCK_MAGIC_WORD = 0xA2693A5C
 
 LOADED_USER_LICENSE_SIZE = 0x80
 EXTENDED_USER_LICENSE_SIZE = 0x80
-USER_LICENSE_FULL_SIZE = LOADED_USER_LICENSE_SIZE + EXTENDED_USER_LICENSE_SIZE
 
 EXTENDED_USER_LICENSE_SIGNATURE_OFFSET = (LOADED_USER_LICENSE_SIZE + 0x28)
 EXTENDED_USER_LICENSE_SIGNATURE_SIZE = 64
@@ -99,6 +98,43 @@ def add_crc(intel_hex_file, start_addr_app, crc_pad_upto):
     ihex_set_uint32(intel_hex_file, start_addr_app + USER_LICENSE_CRC_VALUE_OFFSET, crcvalue)
 
 
+def add_dualboot_crc(intel_hex_file, crc_start_addr, crc_pad_upto, license_address):
+    """
+    add_crc adds a CRC over a specified image to the specified Intel HEX file object.
+    """
+    if crc_pad_upto:
+        crc_end_addr = crc_start_addr + int(crc_pad_upto, 16)
+    else:
+        crc_end_addr = intel_hex_file.maxaddr()
+
+    crc_range_start = crc_start_addr
+
+    # Type is 32-bit CRC
+    intel_hex_file[license_address + USER_LICENSE_CRC_TYPE_OFFSET] = CRC_TYPE_32BIT_CRC
+
+    # Gather data to calculate checksum over
+    data = bytearray()
+    for j in range(crc_range_start, crc_end_addr):
+        data.append(intel_hex_file[j])
+    crcvalue = (~crc32(memoryview(data)) ^ 0xFFFFFFFF) & 0xFFFFFFFF
+
+    logging.info("DualBoot CRC range: %x - %x" % (crc_range_start, crc_end_addr))
+    logging.info("Adding DualBoot CRC value %x" % crcvalue)
+    logging.info("CRC start offset %x" % (license_address - license_address))
+    # Write checksum to license area
+    ihex_set_uint32(intel_hex_file, license_address + USER_LICENSE_CRC_VALUE_OFFSET, crcvalue)
+    # Start Address is determined out of band, thus 0xFFFF
+    ihex_set_uint16(intel_hex_file,
+                    license_address + USER_LICENSE_CRC_START_ADDRESS_MSB_OFFSET,
+                    crc_start_addr - license_address)
+    intel_hex_file[license_address + USER_LICENSE_CRC_START_ADDRESS_LSB_OFFSET] = 0
+
+    # Size is determined out of band, size of crc range
+    ihex_set_uint32(intel_hex_file,
+                    license_address + USER_LICENSE_CRC_SIZE_OFFSET,
+                    len(data))
+
+
 # Adds a CRC over both sections and the user license
 def add_crc_sections(intel_hex_file, license_address, image):
     # Calculate CRC over image
@@ -138,7 +174,7 @@ def create_intel_hex_file_object(hex_filename):
     return intel_hex_file
 
 
-def get_license_data_to_hash(intel_hex_file, start_addr_license):
+def get_license_data_to_hash(args, intel_hex_file, start_addr_license):
     image = bytearray()
 
     start_offset = start_addr_license + USER_LICENSE_VPP_OFFSET
@@ -164,7 +200,12 @@ def get_license_data_to_hash(intel_hex_file, start_addr_license):
                                      + USER_LICENSE_FRESHNESS_COUNTER_OFFSET
                                      + 1)
 
-    end_offset = start_addr_license + USER_LICENSE_FULL_SIZE
+    if args.no_extended_user_license:
+        user_license_full_size = LOADED_USER_LICENSE_SIZE
+    else:
+        user_license_full_size = LOADED_USER_LICENSE_SIZE + EXTENDED_USER_LICENSE_SIZE
+
+    end_offset = start_addr_license + user_license_full_size
     logging.info("adding license [0x%lx,0x%lx]" % (start_offset, end_offset))
 
     for i in range(start_offset, end_offset):
@@ -269,6 +310,10 @@ def parse_command_line_arguments():
     parser.add_argument("--add_crc",
                         help="add crc calculation",
                         action='store_true')
+    parser.add_argument("--add_dualboot_crc",
+                        help="add dual bootloader crc calculation",
+                        action='store_true')
+
     parser.add_argument("--crc_start_addr",
                         help="optional: define start address for CRC calculation")
     parser.add_argument("--crc_pad_upto",
@@ -289,6 +334,10 @@ def parse_command_line_arguments():
 
     parser.add_argument("--section2",
                         help="<offset>:<size> - Section 2 to hash")
+    parser.add_argument("--no-extended-user-license",
+                        help="no extended user license in use",
+                        default=False,
+                        action='store_true')
 
     args = parser.parse_args()
     if not args.hex:
@@ -339,9 +388,12 @@ def main():
 
         assert intel_hex_file.maxaddr() > (start_addr_area + license_offset)
 
-        image.extend(add_section(intel_hex_file, start_addr_area, license_offset, 0, args.section1, args.add_padding))
-        image.extend(add_section(intel_hex_file, start_addr_area, license_offset, 1, args.section2, args.add_padding))
-        image.extend(get_license_data_to_hash(intel_hex_file, license_address))
+        if not args.no_extended_user_license:
+            image.extend(add_section(intel_hex_file, start_addr_area,
+                         license_offset, 0, args.section1, args.add_padding))
+            image.extend(add_section(intel_hex_file, start_addr_area,
+                         license_offset, 1, args.section2, args.add_padding))
+            image.extend(get_license_data_to_hash(args, intel_hex_file, license_address))
 
     if args.set_bootloader_loaded:
         if 'license_address' not in locals():
@@ -363,6 +415,10 @@ def main():
             add_crc(intel_hex_file, crc_start_addr, args.crc_pad_upto)
         else:
             add_crc_sections(intel_hex_file, license_address, image)
+
+    if args.add_dualboot_crc:
+        crc_start_addr = int(args.crc_start_addr, 16)
+        add_dualboot_crc(intel_hex_file, crc_start_addr, args.crc_pad_upto, license_address)
 
     if args.output:
         intel_hex_file.writePath = args.output

@@ -45,6 +45,9 @@
 #include "gpLog.h"
 #include "gpAssert.h"
 
+#if defined(GP_DIVERSITY_FREERTOS) && defined(GP_SCHED_DIVERSITY_RUN_ON_SCHED)
+#include "gpSched_runOn.h"
+#endif
 
 /*****************************************************************************
  *                    Precompiler checks
@@ -141,6 +144,9 @@ void gpSched_InitExtramData(void)
     MEMSET(sched_OnIdleCallbacks, 0, sizeof(sched_OnIdleCallbacks));
 #endif /* GP_SCHED_NR_OF_IDLE_CALLBACKS > 0 */
 
+#if defined(GP_DIVERSITY_FREERTOS) && defined(GP_SCHED_DIVERSITY_RUN_ON_SCHED)
+    gpSched_RunOnInit();
+#endif
 }
 
 

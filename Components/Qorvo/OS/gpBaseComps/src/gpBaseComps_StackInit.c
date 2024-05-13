@@ -233,9 +233,9 @@ void gpBaseComps_StackInit(void)
 
 
 
-#ifdef GP_COMP_POOLMEM
+#if defined(GP_COMP_POOLMEM) && !defined(GP_POOLMEM_AS_INTERFACE)
     gpPoolMem_Init();
-#endif //GP_COMP_POOLMEM
+#endif // defined(GP_COMP_POOLMEM) && !defined(GP_POOLMEM_AS_INTERFACE)
 
 #ifdef GP_COMP_VERSION
     gpVersion_Init();
@@ -280,9 +280,10 @@ void gpBaseComps_StackInit(void)
     gpRxArbiter_Init();
 #endif //GP_COMP_RXARBITER
 
-#ifdef GP_COMP_PD
+#if defined(GP_COMP_PD) 
     gpPd_Init();
-#endif //GP_COMP_PD
+#endif // defined(GP_COMP_PD) && !defined(GP_PD_AS_INTERFACE)
+
 #ifdef GP_COMP_PAD
     gpPad_Init();
 #endif //GP_COMP_PAD
@@ -308,9 +309,9 @@ void gpBaseComps_StackInit(void)
 #ifdef GP_COMP_RANDOM
     gpRandom_Init();
 #endif //GP_COMP_RANDOM
-#ifdef GP_COMP_ENCRYPTION
+#if defined(GP_COMP_ENCRYPTION) 
     gpEncryption_Init();
-#endif //GP_COMP_ENCRYPTION
+#endif // defined(GP_COMP_ENCRYPTION) && !defined(GP_ENCRYPTION_AS_INTERFACE)
 
 
 

@@ -217,7 +217,7 @@ static void Com_CalculateSizes(UInt16* sizeAvailable, UInt16* sizeBlock, UInt8 u
     // This function is called from a context where we want to add new data to the buffer
     // This function MUST be called with interrupts disabled.
 
-#if   defined(GP_COM_ZERO_COPY_BLOCK_TRANSFERS)
+#if   defined(GP_COM_ZERO_COPY_BLOCK_TRANSFERS) && defined(GP_DIVERSITY_COM_UART)
 #define TO_TRANSMIT_POINTER gpCom_ProcessedPtr
 #else
 #define TO_TRANSMIT_POINTER gpCom_ReadPtr

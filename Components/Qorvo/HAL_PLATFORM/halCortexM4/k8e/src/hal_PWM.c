@@ -61,7 +61,6 @@
 // DMA buffer size in bytes for PCM playback.
 #define DMA_TX_BUF_SIZE             512
 
-#define HAL_TIMESTAMP_COUNTER       halTimer_timer2
 #define HAL_PWM_MAIN_COUNTER        halTimer_timer3
 #define HAL_PWM_CARRIER_COUNTER     halTimer_timer4
 
@@ -215,7 +214,6 @@ void hal_InitPWM(void)
     // TMR4 = carrier counter
     GP_WB_WRITE_PWMS_MAIN_TMR(HAL_PWM_MAIN_COUNTER);
     GP_WB_WRITE_PWMS_CARRIER_TMR(HAL_PWM_CARRIER_COUNTER);
-    GP_WB_WRITE_PWMS_TIMESTAMP_TMR(HAL_TIMESTAMP_COUNTER);
 
     // Disable PWM.
     hal_EnablePwm(false);

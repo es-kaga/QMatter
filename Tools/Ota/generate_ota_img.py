@@ -5,8 +5,10 @@ import getpass
 import sys
 import os
 import logging
+import re
 import shutil
 import subprocess
+from intelhex import IntelHex
 from dataclasses import dataclass
 from typing import Tuple
 
@@ -25,6 +27,7 @@ class GenerateOtaImageArguments:
     out_file: str
     version: int
     version_str: str
+    test_update_image: bool
     vendor_id: str
     product_id: str
     sign: bool
@@ -35,11 +38,12 @@ class GenerateOtaImageArguments:
     compression: str
     prune_only: bool
     ota_offset: int
+    no_extended_user_license: bool
 
 
 # QPG6105 values:
 QPG6105_FLASH_START = 0x4000000
-QPG6105_FLASH_APP_START_OFFSET = 0x6000
+QPG6105_FLASH_APP_START_OFFSET = 0x8000
 OTA_ADDRESS_OFFSET = 0xa0000
 UPGRADE_SECUREBOOT_PUBLICKEY_OFFSET = 0x1800
 LICENSE_SIZE = 0x100
@@ -70,6 +74,8 @@ def parse_command_line_arguments() -> GenerateOtaImageArguments:
                         help="path to application factory data configuration file")
     parser.add_argument('-vn', '--version', type=any_base_int, help='Software version (numeric)', default=None)
     parser.add_argument('-vs', '--version-str', help='Software version (string)', default=None)
+    parser.add_argument('-tui', '--test-update-image', action='store_true',
+                        help='Extract incremented versions for OTA update test', default=False)
     parser.add_argument('-vid', '--vendor-id', help='Vendor ID (string)', default=None)
     parser.add_argument('-pid', '--product-id', help='Product ID (string)', default=None)
     parser.add_argument('--sign', help='sign firmware', action='store_true')
@@ -85,7 +91,7 @@ def parse_command_line_arguments() -> GenerateOtaImageArguments:
                         default=QPG6105_FLASH_APP_START_OFFSET)
     parser.add_argument('--flash_start',
                         type=any_base_int,
-                        help='Offset of the application in program flash',
+                        help='Offset of the program flash in the memory map',
                         default=QPG6105_FLASH_START)
     parser.add_argument("--compression",
                         choices=['none', 'lzma'],
@@ -93,6 +99,10 @@ def parse_command_line_arguments() -> GenerateOtaImageArguments:
                         help="compression type (default to none)")
     parser.add_argument("--prune_only",
                         help="prune unneeded sections; don't add an upgrade user license (external storage scenario)",
+                        action='store_true')
+    parser.add_argument("--no-extended-user-license",
+                        help="no extended user license in use",
+                        default=False,
                         action='store_true')
 
     requiredArgGroup = parser.add_argument_group('required arguments')
@@ -136,7 +146,7 @@ def extract_vid_and_pid(factory_data_config: str) -> Tuple[str, str]:
     return (vendor_id, product_id)
 
 
-def extract_vn_and_vs(chip_config_header: str) -> Tuple[str, str]:
+def extract_vn_and_vs(chip_config_header: str, test_update_image: bool) -> Tuple[str, str]:
     """ Determine version number/version string from a CHIP project's headers
     """
     version_number = None
@@ -147,17 +157,25 @@ def extract_vn_and_vs(chip_config_header: str) -> Tuple[str, str]:
         return (version_number, version_str)
 
     with open(chip_config_header, 'r', encoding='utf-8') as config_file:
-        lines = config_file.readlines()
+        lines = config_file.read()
 
-        for line in lines:
-            if "#define " in line:
-                if ('CHIP_DEVICE_CONFIG_DEVICE_SOFTWARE_VERSION' in line and not
-                        'CHIP_DEVICE_CONFIG_DEVICE_SOFTWARE_VERSION_STRING' in line):
-                    version_number = line.split()[2]
-                if 'CHIP_DEVICE_CONFIG_DEVICE_SOFTWARE_VERSION_STRING' in line:
-                    version_str = line.split()[2].strip('"\'')
+        # Define the pattern based on the value of use_first_string
+        version_pattern = r"#define CHIP_DEVICE_CONFIG_DEVICE_SOFTWARE_VERSION\s+(0x[0-9a-fA-F]+)"
+        version_string_pattern = r"#define CHIP_DEVICE_CONFIG_DEVICE_SOFTWARE_VERSION_STRING\s+\"([^\"]+)"
 
-    return (version_number, version_str)
+        # Use re.search to find the matching patterns
+        result = []
+        for regex in (version_pattern, version_string_pattern):
+            matches = re.findall(regex, lines)
+            if len(matches) == 2:
+                # Extract the version based on the matching group - first one (0) for normal image, second one (1) for OTA image
+                result.append(matches[1 if test_update_image else 0])
+            else:
+                logging.error("CHIPProjectConfig.h file not properly structured (wrong version defines) - "
+                              "need two versions, one for normal, one for OTA upgrade image")
+                return ()
+
+    return tuple(result)
 
 
 def determine_example_project_config_header(args: GenerateOtaImageArguments):
@@ -211,7 +229,7 @@ def determine_version_values(args: GenerateOtaImageArguments) -> Tuple[str, str]
     """
     used_chip_config_header = args.chip_config_header or determine_example_project_config_header(args)
 
-    (version, version_str) = extract_vn_and_vs(used_chip_config_header)
+    (version, version_str) = extract_vn_and_vs(used_chip_config_header, args.test_update_image)
 
     if args.version:
         logging.warning(f"Version from {used_chip_config_header} overruled by argument of {__file__}")
@@ -251,11 +269,15 @@ def post_process_image(args: GenerateOtaImageArguments):
     common_arguments = (" --set_bootloader_loaded"
                         f" --hex {args.in_file}"
                         f" --license_offset {args.flash_app_start_offset:#x}"
-                        f" --section1 {args.flash_app_start_offset+LICENSE_SIZE:#x}:0xffffffff"
-                        " --section2 0x800:0x1000"
                         f" --start_addr_area {args.flash_start:#x}"
                         )
-
+    if args.no_extended_user_license:
+        common_arguments += (" --no-extended-user-license")
+    else:
+        common_arguments += (
+            f" --section1 {args.flash_app_start_offset+LICENSE_SIZE:#x}:0xffffffff"
+            " --section2 0x800:0x1000"
+        )
     if args.sign:
         run_script(f"{SIGNFIRMWARE_PATH}"
                    f" --pem {args.pem_file_path} "
@@ -267,18 +289,28 @@ def post_process_image(args: GenerateOtaImageArguments):
                    f" {common_arguments}")
 
 
+def get_hexfile_content_offset(args: GenerateOtaImageArguments):
+    """ return the difference between start of flash and first data in the intel hex """
+    intel_hex_file = IntelHex(args.in_file)
+    offset = intel_hex_file.minaddr() - args.flash_start
+    logging.info("Offset of first data in hex file: 0x%08x", offset)
+    return offset
+
+
 def compress_ota_payload(args: GenerateOtaImageArguments):
     """Apply compression and add metadata for the Qorvo bootloader"""
     input_base_path = os.path.splitext(args.in_file)[0]
     intermediate_hash_added_binary = f"{input_base_path}-with-hash.bin"
     intermediate_compressed_binary_path = f"{input_base_path}.compressed.bin"
     run_script(f"{HEX2BIN_PATH} {args.in_file} {intermediate_hash_added_binary}")
+    hexfile_content_offset = get_hexfile_content_offset(args)
     run_script(f"{COMPRESSFIRMWARE_PATH} "
                f"{'' if args.sign else '--add_crc'}"
                f" --compression={args.compression}"
                f" {'--prune_only' if args.prune_only else ''}"
+               f" {'--no-extended-user-license' if args.no_extended_user_license else ''}"
                f" --input {intermediate_hash_added_binary}"
-               f" --license_offset {args.flash_app_start_offset-0x10:#x} --ota_offset {args.ota_offset:#x}"
+               f" --license_offset {args.flash_app_start_offset-hexfile_content_offset:#x} --ota_offset {args.ota_offset:#x}"
                f" --output {intermediate_compressed_binary_path}"
                " --page_size 0x200 --sector_size 0x400"
                + (f" --pem {args.pem_file_path} "

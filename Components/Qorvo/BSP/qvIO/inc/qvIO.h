@@ -55,11 +55,11 @@
 
 /*! PWM color LED channels */
 // GP_DIVERSITY_QPG6105DK_B01 and sensible defaults for DB05 platforms
-#define PWM_CHANNEL_RED        (0)
-#define PWM_CHANNEL_GREEN      (1)
-#define PWM_CHANNEL_BLUE       (2)
-#define PWM_CHANNEL_WHITE_COOL (4)
-#define PWM_CHANNEL_WHITE_WARM (5)
+#define PWM_CHANNEL_RED        0
+#define PWM_CHANNEL_GREEN      1
+#define PWM_CHANNEL_BLUE       2
+#define PWM_CHANNEL_WHITE_COOL 4
+#define PWM_CHANNEL_WHITE_WARM 5
 
 /*! Button and switch (SW3) designations */
 #define BTN_SW1 (0)

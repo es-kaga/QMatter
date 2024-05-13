@@ -387,9 +387,9 @@ void AppTask::UpdateClusterState(void)
         bool isTurnedOn = LightingMgr().IsTurnedOn();
 
         SystemLayer().ScheduleLambda([isTurnedOn] {
-            EmberAfStatus status = Clusters::OnOff::Attributes::OnOff::Set(QPG_LIGHT_ENDPOINT_ID, isTurnedOn);
+            Protocols::InteractionModel::Status status = Clusters::OnOff::Attributes::OnOff::Set(QPG_LIGHT_ENDPOINT_ID, isTurnedOn);
 
-            if (status != EMBER_ZCL_STATUS_SUCCESS)
+            if (status != Protocols::InteractionModel::Status::Success)
             {
                 ChipLogError(NotSpecified, "ERR: updating on/off %x", status);
             }

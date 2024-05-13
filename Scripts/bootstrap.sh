@@ -42,42 +42,12 @@ check_installed_dependency ()
     return 0
 }
 
-install_node_npm ()
-{
-    sudo apt-get update
-
-    ### Node.js v16 ###
-    curl -fsSL https://deb.nodesource.com/setup_16.x | sudo bash -
-
-    sudo apt install -y nodejs
-    # the 'installed-check' package checks package.json is fulfilled
-    if ! npm list installed-check &>/dev/null; then
-        npm install installed-check
-    fi
-
-    if ! ./node_modules/.bin/installed-check -c &>/dev/null; then
-        npm install
-    fi
-}
-
 install_zap_dependencies ()
 {
     sudo apt-get update
-    sudo apt-get install -y clang-format npm
+    sudo apt-get install -y clang-format
 
     sudo apt-get install -y --fix-missing libpixman-1-dev libcairo-dev libsdl-pango-dev libjpeg-dev libgif-dev
-
-    curl -fsSL https://deb.nodesource.com/setup_16.x | sudo bash -
-
-    sudo apt install -y nodejs
-
-    if ! npm list installed-check &>/dev/null; then
-        npm install installed-check
-    fi
-
-    if ! ./node_modules/.bin/installed-check -c &>/dev/null; then
-        npm install
-    fi
 }
 
 install_arm_gcc_emb ()
@@ -121,7 +91,7 @@ setup_venv ()
         sudo apt-get update
     fi
 
-    sudo apt install -y python3.9
+    sudo apt install -y python3.9 python3.9-dev gcc
     # required for gn exec_script
     sudo apt install -y python-is-python3
     #check openssl minversion
@@ -148,6 +118,8 @@ setup_venv ()
     log "$(python -V)"
     # Install additional modules
     pip3 install wheel dataclasses intelhex click ecdsa cryptography lark jinja2 stringcase pigweed PrettyTable Cheetah3 pylzma
+    # clang-format version needs pinning due to matter requirements
+    pip3 install clang-format==16.0.6
 }
 
 setup_submodules ()
@@ -164,7 +136,10 @@ setup_submodules ()
 
     log "Updating submodules"
     git submodule update --init --depth=1 Components/ThirdParty/Matter/repo
-
+    git submodule update --init --depth=1 -- Components/ThirdParty/OpenThread/ot-qorvo
+    cd Components/ThirdParty/OpenThread/ot-qorvo || (bootstrap_sh_failure "chdir to ot-qorvo repo failed"; exit 1)
+    git submodule update --init --depth=1 -- openthread
+    cd -
     cd Components/ThirdParty/Matter/repo || (bootstrap_sh_failure "chdir to matter repo failed"; exit 1)
     # TODO: use Components/ThirdParty/Matter/repo/scripts/checkout_submodules.py --platform qpg
     for module_path in  \
@@ -228,6 +203,7 @@ command -v sudo || (
 command sudo apt-get update
 
 for tool_name in  \
+    lsb-release \
     git \
     clang \
     make \
@@ -237,10 +213,6 @@ for tool_name in  \
 do
     command -v "$tool_name" || sudo apt-get install -y "${tool_name}" || sudo apt-get install -y "${tool_name}-build"
 done
-
-if ! check_installed_dependency node; then
-    install_node_npm
-fi
 
 if check_installed_dependency arm-none-eabi-gcc
 then
@@ -257,9 +229,7 @@ if ! check_installed_dependency gn; then
     install_gn
 fi
 
-if ! check_installed_dependency npm; then
-    install_zap_dependencies
-fi
+install_zap_dependencies
 
 if ! check_installed_dependency rsync; then
     install_rsync

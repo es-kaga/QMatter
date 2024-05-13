@@ -92,6 +92,7 @@ class CompressFirmwareArguments:
     compression: str
     prune_only: bool
     ota_offset: int
+    no_extended_user_license: bool
     # application namespace variables
     license_sector_file: str = field(init=False)
     raw_app_content_file: str = field(init=False)
@@ -99,9 +100,9 @@ class CompressFirmwareArguments:
     paddedBinFile: str = field(init=False)
     compressed_payload_file: str = field(init=False)
     license_sector: bytearray = field(init=False)
-    section1_addr: int = field(init=False)
+    section1_addr: int = EXTENDED_USER_LICENSE_SECTION_NOT_IN_USE
     section1_size: int = field(init=False)
-    section2_addr: int = field(init=False)
+    section2_addr: int = EXTENDED_USER_LICENSE_SECTION_NOT_IN_USE
     section2_size: int = field(init=False)
     jumptables_data: bytes = field(init=False)
     raw_app_contents: bytes = field(init=False)
@@ -117,7 +118,8 @@ def read_input_file(args: CompressFirmwareArguments):
 
     args.license_sector = extract_license_sector(args, binary_input)
 
-    parse_section_sizes(args)
+    if not args.no_extended_user_license:
+        parse_section_sizes(args)
 
     if args.section2_addr != EXTENDED_USER_LICENSE_SECTION_NOT_IN_USE:
         args.jumptables_data = extract_jumptables_contents(args, binary_input)
@@ -433,6 +435,10 @@ def parse_command_line_arguments() -> CompressFirmwareArguments:
     parser.add_argument("--prune_only",
                         help="prune unneeded sections; don't add an upgrade user license (external storage scenario)",
                         action='store_true')
+    parser.add_argument("--no-extended-user-license",
+                        help="no extended user license in use",
+                        default=False,
+                        action='store_true')
 
     args = parser.parse_args()
 
@@ -522,6 +528,7 @@ def main(args: CompressFirmwareArguments):
     validate_command_line_arguments(args)
 
     if args.license_offset is not None:
+        logging.info(f"license_offset is {args.license_offset:#x}")
         # Split off the jumptables and user license if needed
         read_input_file(args)
         data_to_pad = bytes(args.raw_app_contents)

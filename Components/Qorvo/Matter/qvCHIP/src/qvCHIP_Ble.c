@@ -43,6 +43,8 @@
 #include "gpLog.h"
 #include "hal.h"
 #include "hal_BleFreeRTOS.h"
+#include "gpSched_runOn.h"
+#include "timers.h"
 
 #include "wsf_types.h"
 #include "wsf_msg.h"
@@ -110,6 +112,9 @@ static bool qvCHIP_isBleInitiated = false;
 #define CHIPOBLESRV_START_HDL 0x1000
 #define CHIPOBLESRV_END_HDL   (HDL_CHIPOBLE_SRV_MAX - 1)
 
+/*!< \brief RunOn API success return value */
+#define RUNON_STATUS_OK (0)
+
 /*!< \brief Definition of CHIP over BLE service handle values */
 enum {
     CHIPOBLE_SVC_HDL = CHIPOBLESRV_START_HDL, /* CHIPoBLE service declaration */
@@ -128,6 +133,14 @@ enum {
     CHIPOBLE_C3_CH_HDL = HDL_CHIPOBLE_SRV_MAX, /* CHIPoBLE C3 characteristic */
     CHIPOBLE_C3_HDL,                           /* CHIPoBLE C3 value */
 };
+
+/*!< \brief Definition of internal state of BLE interface */
+typedef enum qvCHIP_Ble_State_ {
+    QV_BLE_STATE_NOT_INITIALIZED,
+    QV_BLE_STATE_RESET,
+    QV_BLE_STATE_ADV_STOPPED,
+    QV_BLE_STATE_ADV_STARTED,
+} qvCHIP_Ble_State_t;
 
 /*!< \brief Proprietary service UUID for CHIPoBLE */
 #define ATT_UUID_CHIPOBLE_SERVICE 0xF6, 0xFF
@@ -301,7 +314,21 @@ static const attsCccSet_t qvCHIP_CccSet[NUM_CCC_IDX] = {
 /*!< \brief Cordio message handler ID */
 static wsfHandlerId_t qvCHIP_Ble_MsgHandlerId;
 
-void string_reverse(const uint8_t* a, uint8_t* b, uint8_t len)
+/*!< \brief qvCHIP_Ble internal state */
+static volatile qvCHIP_Ble_State_t qvCHIP_Ble_State = QV_BLE_STATE_NOT_INITIALIZED;
+
+/*!< \brief Params for internal API */
+typedef struct {
+    uint8_t u8param1;
+    uint8_t u8param2;
+    uint16_t u16param1;
+    uint16_t u16param2;
+    uint16_t u16param3;
+    uint32_t ptrParam; // all pointer types on this uC are 4 bytes, so we can aggregate
+    qvStatus_t outParam;
+} runOnParam_t;
+
+static void string_reverse(const uint8_t* a, uint8_t* b, uint8_t len)
 {
     uint8_t i;
 
@@ -311,38 +338,39 @@ void string_reverse(const uint8_t* a, uint8_t* b, uint8_t len)
     }
 }
 
-uint8_t qvCHIP_Ble_ReadCback(dmConnId_t connId, uint16_t handle, uint8_t operation, uint16_t offset, attsAttr_t* pAttr)
+uint8_t qvCHIP_Ble_ReadCallback(dmConnId_t connId, uint16_t handle, uint8_t operation, uint16_t offset,
+                                attsAttr_t* pAttr)
 {
-    if(qvCHIP_IntCb.chrReadCback != NULL)
+    if(qvCHIP_IntCb.chrReadCallback != NULL)
     {
-        qvCHIP_IntCb.chrReadCback(connId, handle, operation, offset, (qvCHIP_Ble_Attr_t*)pAttr);
+        qvCHIP_IntCb.chrReadCallback(connId, handle, operation, offset, (qvCHIP_Ble_Attr_t*)pAttr);
     }
 
     return ATT_SUCCESS;
 }
 
 /*! Attribute group write callback */
-uint8_t qvCHIP_Ble_WriteCback(dmConnId_t connId, uint16_t handle, uint8_t operation, uint16_t offset, uint16_t len,
-                              uint8_t* pValue, attsAttr_t* pAttr)
+static uint8_t qvCHIP_Ble_WriteCallback(dmConnId_t connId, uint16_t handle, uint8_t operation, uint16_t offset,
+                                        uint16_t len, uint8_t* pValue, attsAttr_t* pAttr)
 {
-    if(qvCHIP_IntCb.chrWriteCback != NULL)
+    if(qvCHIP_IntCb.chrWriteCallback != NULL)
     {
-        qvCHIP_IntCb.chrWriteCback(connId, handle, operation, offset, len, pValue, (qvCHIP_Ble_Attr_t*)pAttr);
+        qvCHIP_IntCb.chrWriteCallback(connId, handle, operation, offset, len, pValue, (qvCHIP_Ble_Attr_t*)pAttr);
     }
 
     return ATT_SUCCESS;
 }
 
-void qvCHIP_Ble_ATTS_CccCback(attsCccEvt_t* pEvt)
+static void qvCHIP_Ble_ATTS_CccCallback(attsCccEvt_t* pEvt)
 {
-    if((pEvt->handle == CHIPOBLE_TX_CCC_HDL) && (qvCHIP_IntCb.cccCback != NULL))
+    if((pEvt->handle == CHIPOBLE_TX_CCC_HDL) && (qvCHIP_IntCb.cccCallback != NULL))
     {
-        qvCHIP_IntCb.cccCback((qvCHIP_Ble_AttsCccEvt_t*)pEvt);
+        qvCHIP_IntCb.cccCallback((qvCHIP_Ble_AttsCccEvt_t*)pEvt);
     }
 }
 
 /* DM callback */
-static void qvCHIP_Ble_DmCback(dmEvt_t* pDmEvt)
+static void qvCHIP_Ble_DmCallback(dmEvt_t* pDmEvt)
 {
     dmEvt_t* pMsg;
     uint16_t len;
@@ -351,20 +379,40 @@ static void qvCHIP_Ble_DmCback(dmEvt_t* pDmEvt)
 
     len = DmSizeOfEvt(pDmEvt);
 
-    if(pDmEvt->hdr.event == DM_RESET_CMPL_IND)
+    switch(pDmEvt->hdr.event)
     {
-#if(CORDIO_BLE_HOST_ATT_MAX_MTU > ATT_DEFAULT_MTU)
-        uint16_t rxAclLen;
-
-        rxAclLen = HciGetMaxRxAclLen();
-        if(CORDIO_BLE_HOST_ATT_MAX_MTU > (rxAclLen - L2C_HDR_LEN))
+        case DM_RESET_CMPL_IND:
         {
-            HciSetMaxRxAclLen(CORDIO_BLE_HOST_ATT_MAX_MTU + L2C_HDR_LEN);
-        }
+#if(CORDIO_BLE_HOST_ATT_MAX_MTU > ATT_DEFAULT_MTU)
+
+            uint16_t rxAclLen;
+
+            rxAclLen = HciGetMaxRxAclLen();
+            if(CORDIO_BLE_HOST_ATT_MAX_MTU > (rxAclLen - L2C_HDR_LEN))
+            {
+                HciSetMaxRxAclLen(CORDIO_BLE_HOST_ATT_MAX_MTU + L2C_HDR_LEN);
+            }
 #endif // CORDIO_BLE_HOST_ATT_MAX_MTU > ATT_DEFAULT_MTU
 
-        // Populate hash correctly
-        AttsCalculateDbHash();
+            // Populate hash correctly
+            AttsCalculateDbHash();
+            qvCHIP_Ble_State = QV_BLE_STATE_RESET;
+            break;
+        }
+        case DM_ADV_START_IND:
+        {
+            qvCHIP_Ble_State = QV_BLE_STATE_ADV_STARTED;
+            break;
+        }
+        // on connection we automatically stop advertising, but no DM_ADV_STOP_IND is sent
+        case DM_CONN_OPEN_IND:
+        case DM_ADV_STOP_IND:
+        {
+            qvCHIP_Ble_State = QV_BLE_STATE_ADV_STOPPED;
+            break;
+        }
+        default:
+            break;
     }
 
     if((pMsg = WsfMsgAlloc(len)) != NULL)
@@ -375,7 +423,7 @@ static void qvCHIP_Ble_DmCback(dmEvt_t* pDmEvt)
 }
 
 /* ATT callback */
-static void qvCHIP_Ble_AttCback(attEvt_t* pAttEvt)
+static void qvCHIP_Ble_AttCallback(attEvt_t* pAttEvt)
 {
     attEvt_t* pMsg;
     GP_ASSERT_SYSTEM(pAttEvt);
@@ -398,7 +446,7 @@ static void qvCHIP_Ble_AttCback(attEvt_t* pAttEvt)
  *  \return None.
  */
 /*************************************************************************************************/
-void AppServerConnCback(dmEvt_t* pDmEvt)
+void AppServerConnCallback(dmEvt_t* pDmEvt)
 {
     // appDbHdl_t  dbHdl;
     dmConnId_t connId = (dmConnId_t)pDmEvt->hdr.param;
@@ -427,6 +475,11 @@ void AppServerConnCback(dmEvt_t* pDmEvt)
     }
 }
 
+static void qvCHIP_Ble_StackCallback(void* pMsg, uint32_t ulParameter2)
+{
+    qvCHIP_IntCb.stackCallback((qvCHIP_Ble_MsgHdr_t*)pMsg);
+}
+
 /* Process All Messages */
 static void qvCHIP_Ble_MsgHandler(wsfEventMask_t event, wsfMsgHdr_t* pMsg)
 {
@@ -442,10 +495,23 @@ static void qvCHIP_Ble_MsgHandler(wsfEventMask_t event, wsfMsgHdr_t* pMsg)
         qvCHIP_isBleInitiated = true;
     }
 
-    if(qvCHIP_IntCb.stackCback != NULL)
+    if(qvCHIP_IntCb.stackCallback != NULL)
     {
-        GP_LOG_SYSTEM_PRINTF("Msg %x", 0, pMsg->event);
-        qvCHIP_IntCb.stackCback((qvCHIP_Ble_MsgHdr_t*)pMsg);
+        /* We defer only advertising start/stop events, as they are low-frequency.
+           The characteristic notifications/indications must be processed as they are now,
+           otherwise BLE commissioning is broken.
+        */
+        if((pMsg->event == DM_ADV_START_IND) || (pMsg->event == DM_ADV_STOP_IND))
+        {
+            BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+            /* process the callback on the timer thread instead of BLE thread */
+            xTimerPendFunctionCallFromISR(qvCHIP_Ble_StackCallback, (void*)pMsg, 0, &xHigherPriorityTaskWoken);
+            portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
+        }
+        else
+        {
+            qvCHIP_IntCb.stackCallback((qvCHIP_Ble_MsgHdr_t*)pMsg);
+        }
     }
 }
 
@@ -464,13 +530,13 @@ qvStatus_t qvCHIP_BleInit(qvCHIP_Ble_Callbacks_t* callbacks)
 
     /* Register for stack callbacks */
     /* register callback to the device manager Scan and Advertisement messages */
-    DmRegister(qvCHIP_Ble_DmCback);
+    DmRegister(qvCHIP_Ble_DmCallback);
     /* register callback to the DM connection manager */
-    DmConnRegister(DM_CLIENT_ID_APP, qvCHIP_Ble_DmCback);
-    AttRegister(qvCHIP_Ble_AttCback);
+    DmConnRegister(DM_CLIENT_ID_APP, qvCHIP_Ble_DmCallback);
+    AttRegister(qvCHIP_Ble_AttCallback);
 
     /* register callbacks to the attribute server */
-    AttConnRegister(AppServerConnCback);
+    AttConnRegister(AppServerConnCallback);
 
     /* handle events */
     qvCHIP_Ble_MsgHandlerId = WsfOsSetNextHandler(qvCHIP_Ble_MsgHandler);
@@ -479,12 +545,12 @@ qvStatus_t qvCHIP_BleInit(qvCHIP_Ble_Callbacks_t* callbacks)
     SvcCoreAddGroup();
 
     /* CHIP over BLE service */
-    svcCHIPoBLEGroup.readCback = qvCHIP_Ble_ReadCback;
-    svcCHIPoBLEGroup.writeCback = qvCHIP_Ble_WriteCback;
+    svcCHIPoBLEGroup.readCback = qvCHIP_Ble_ReadCallback;
+    svcCHIPoBLEGroup.writeCback = qvCHIP_Ble_WriteCallback;
     AttsAddGroup(&svcCHIPoBLEGroup);
 
     /* CHIPoBLE */
-    AttsCccRegister(NUM_CCC_IDX, (attsCccSet_t*)qvCHIP_CccSet, qvCHIP_Ble_ATTS_CccCback);
+    AttsCccRegister(NUM_CCC_IDX, (attsCccSet_t*)qvCHIP_CccSet, qvCHIP_Ble_ATTS_CccCallback);
 
     /* Reset the device */
     DmDevReset();
@@ -560,15 +626,39 @@ qvStatus_t qvCHIP_BleSetDeviceName(const char* devName)
     return QV_STATUS_NO_ERROR;
 }
 
-qvStatus_t qvCHIP_BleCloseConnection(uint16_t conId)
+static uint32_t qvCHIP_BleCloseConnection_Internal(void* arg)
 {
+    GP_ASSERT_DEV_EXT(arg != NULL);
+
+    uint16_t conId = ((runOnParam_t*)arg)->u16param1;
+
+    GP_ASSERT_DEV_EXT(sizeof(((runOnParam_t*)arg)->u16param1) == sizeof(conId));
+
     if(conId > DM_CONN_MAX || conId == DM_CONN_ID_NONE)
     {
-        return QV_STATUS_INVALID_ARGUMENT;
+        ((runOnParam_t*)arg)->outParam = QV_STATUS_INVALID_ARGUMENT;
+        return RUNON_STATUS_OK;
     }
 
     DmConnClose(DM_CLIENT_ID_APP, (dmConnId_t)conId, HCI_ERR_REMOTE_TERMINATED);
-    return QV_STATUS_NO_ERROR;
+
+    ((runOnParam_t*)arg)->outParam = QV_STATUS_NO_ERROR;
+
+    return RUNON_STATUS_OK;
+}
+
+qvStatus_t qvCHIP_BleCloseConnection(uint16_t conId)
+{
+    runOnParam_t param = {
+        .u16param1 = conId,
+        .outParam = QV_STATUS_WRONG_STATE,
+    };
+
+    uint32_t ret = gpSched_RunOn(qvCHIP_BleCloseConnection_Internal, (void*)&param);
+
+    GP_ASSERT_DEV_EXT(ret == RUNON_STATUS_OK);
+
+    return param.outParam;
 }
 
 qvStatus_t qvCHIP_BleGetMTU(uint16_t conId, uint16_t* pMTUSize)
@@ -582,67 +672,217 @@ qvStatus_t qvCHIP_BleGetMTU(uint16_t conId, uint16_t* pMTUSize)
     return QV_STATUS_NO_ERROR;
 }
 
-qvStatus_t qvCHIP_BleSendIndication(uint16_t conId, uint16_t handle, uint16_t length, uint8_t* data)
+static uint32_t qvCHIP_BleSendIndication_Internal(void* arg)
 {
+    GP_ASSERT_DEV_EXT(arg != NULL);
+
+    uint16_t conId = ((runOnParam_t*)arg)->u16param1;
+    uint16_t handle = ((runOnParam_t*)arg)->u16param2;
+    uint16_t length = ((runOnParam_t*)arg)->u16param3;
+    uint8_t* data = (uint8_t*)((runOnParam_t*)arg)->ptrParam;
+
+    GP_ASSERT_DEV_EXT(sizeof(((runOnParam_t*)arg)->u16param1) == sizeof(conId));
+    GP_ASSERT_DEV_EXT(sizeof(((runOnParam_t*)arg)->u16param2) == sizeof(handle));
+    GP_ASSERT_DEV_EXT(sizeof(((runOnParam_t*)arg)->u16param3) == sizeof(length));
+    GP_ASSERT_DEV_EXT(sizeof(((runOnParam_t*)arg)->ptrParam) == sizeof(data));
+
     if(conId > DM_CONN_MAX || conId == DM_CONN_ID_NONE || NULL == data)
     {
-        return QV_STATUS_INVALID_ARGUMENT;
+        ((runOnParam_t*)arg)->outParam = QV_STATUS_INVALID_ARGUMENT;
+        return RUNON_STATUS_OK;
     }
 
     AttsHandleValueInd((dmConnId_t)conId, handle, length, data);
-    return QV_STATUS_NO_ERROR;
+
+    ((runOnParam_t*)arg)->outParam = QV_STATUS_NO_ERROR;
+
+    return RUNON_STATUS_OK;
+}
+
+qvStatus_t qvCHIP_BleSendIndication(uint16_t conId, uint16_t handle, uint16_t length, uint8_t* data)
+{
+    runOnParam_t param = {
+        .u16param1 = conId,
+        .u16param2 = handle,
+        .u16param3 = length,
+        .ptrParam = (uint32_t)data,
+        .outParam = QV_STATUS_WRONG_STATE,
+    };
+
+    uint32_t ret = gpSched_RunOn(qvCHIP_BleSendIndication_Internal, (void*)&param);
+
+    GP_ASSERT_DEV_EXT(ret == RUNON_STATUS_OK);
+
+    return param.outParam;
+}
+
+static uint32_t qvCHIP_BleSendNotification_Internal(void* arg)
+{
+    GP_ASSERT_DEV_EXT(arg != NULL);
+
+    uint16_t conId = ((runOnParam_t*)arg)->u16param1;
+    uint16_t handle = ((runOnParam_t*)arg)->u16param2;
+    uint16_t length = ((runOnParam_t*)arg)->u16param3;
+    uint8_t* data = (uint8_t*)((runOnParam_t*)arg)->ptrParam;
+
+    GP_ASSERT_DEV_EXT(sizeof(((runOnParam_t*)arg)->u16param1) == sizeof(conId));
+    GP_ASSERT_DEV_EXT(sizeof(((runOnParam_t*)arg)->u16param2) == sizeof(handle));
+    GP_ASSERT_DEV_EXT(sizeof(((runOnParam_t*)arg)->u16param3) == sizeof(length));
+    GP_ASSERT_DEV_EXT(sizeof(((runOnParam_t*)arg)->ptrParam) == sizeof(data));
+
+    if(conId > DM_CONN_MAX || conId == DM_CONN_ID_NONE || NULL == data)
+    {
+        ((runOnParam_t*)arg)->outParam = QV_STATUS_INVALID_ARGUMENT;
+        return RUNON_STATUS_OK;
+    }
+
+    AttsHandleValueNtf((dmConnId_t)conId, handle, length, data);
+
+    ((runOnParam_t*)arg)->outParam = QV_STATUS_NO_ERROR;
+
+    return RUNON_STATUS_OK;
 }
 
 qvStatus_t qvCHIP_BleSendNotification(uint16_t conId, uint16_t handle, uint16_t length, uint8_t* data)
 {
-    if(conId > DM_CONN_MAX || conId == DM_CONN_ID_NONE || NULL == data)
+    runOnParam_t param = {
+        .u16param1 = conId,
+        .u16param2 = handle,
+        .u16param3 = length,
+        .ptrParam = (uint32_t)data,
+        .outParam = QV_STATUS_WRONG_STATE,
+    };
+
+    uint32_t ret = gpSched_RunOn(qvCHIP_BleSendNotification_Internal, (void*)&param);
+
+    GP_ASSERT_DEV_EXT(ret == RUNON_STATUS_OK);
+
+    return param.outParam;
+}
+
+static uint32_t qvCHIP_BleWriteC3Attr_Internal(void* arg)
+{
+    GP_ASSERT_DEV_EXT(arg != NULL);
+
+    uint16_t length = ((runOnParam_t*)arg)->u16param1;
+    uint8_t* data = (uint8_t*)((runOnParam_t*)arg)->ptrParam;
+
+    GP_ASSERT_DEV_EXT(sizeof(((runOnParam_t*)arg)->u16param1) == sizeof(length));
+    GP_ASSERT_DEV_EXT(sizeof(((runOnParam_t*)arg)->ptrParam) == sizeof(data));
+
+    if(CHIPOBLE_C3_HDL != svcCHIPoBLEGroup.endHandle)
     {
-        return QV_STATUS_INVALID_ARGUMENT;
+        ((runOnParam_t*)arg)->outParam = QV_STATUS_NOT_IMPLEMENTED;
+        return RUNON_STATUS_OK;
     }
 
-    AttsHandleValueNtf((dmConnId_t)conId, handle, length, data);
-    return QV_STATUS_NO_ERROR;
+    ((runOnParam_t*)arg)->outParam = AttsSetAttr(CHIPOBLE_C3_HDL, length, data);
+
+    return RUNON_STATUS_OK;
 }
 
 qvStatus_t qvCHIP_BleWriteC3Attr(uint16_t length, uint8_t* data)
 {
-    if(CHIPOBLE_C3_HDL != svcCHIPoBLEGroup.endHandle)
-    {
-        return QV_STATUS_NOT_IMPLEMENTED;
-    }
+    runOnParam_t param = {
+        .u16param1 = length,
+        .ptrParam = (uint32_t)data,
+        .outParam = QV_STATUS_WRONG_STATE,
+    };
 
-    return AttsSetAttr(CHIPOBLE_C3_HDL, length, data);
+    uint32_t ret = gpSched_RunOn(qvCHIP_BleWriteC3Attr_Internal, (void*)&param);
+
+    GP_ASSERT_DEV_EXT(ret == RUNON_STATUS_OK);
+
+    return param.outParam;
 }
 
-qvStatus_t qvCHIP_BleSetAdvInterval(uint16_t intervalMin, uint16_t intervalMax)
+static uint32_t qvCHIP_BleSetAdvInterval_Internal(void* arg)
 {
+    GP_ASSERT_DEV_EXT(arg != NULL);
+
+    uint16_t intervalMin = ((runOnParam_t*)arg)->u16param1;
+    uint16_t intervalMax = ((runOnParam_t*)arg)->u16param2;
+
+    GP_ASSERT_DEV_EXT(sizeof(((runOnParam_t*)arg)->u16param1) == sizeof(intervalMin));
+    GP_ASSERT_DEV_EXT(sizeof(((runOnParam_t*)arg)->u16param2) == sizeof(intervalMax));
+
     if(intervalMin > intervalMax)
     {
-        return QV_STATUS_INVALID_ARGUMENT;
+        ((runOnParam_t*)arg)->outParam = QV_STATUS_INVALID_ARGUMENT;
+        return RUNON_STATUS_OK;
     }
 
     uint8_t advHandle = DM_ADV_HANDLE_DEFAULT;
 
     DmAdvSetInterval(advHandle, intervalMin, intervalMax);
-    return QV_STATUS_NO_ERROR;
+
+    ((runOnParam_t*)arg)->outParam = QV_STATUS_NO_ERROR;
+
+    return RUNON_STATUS_OK;
 }
 
-qvStatus_t qvCHIP_BleSetAdvData(qvAdvLocation_t location, uint8_t len, uint8_t* pData)
+qvStatus_t qvCHIP_BleSetAdvInterval(uint16_t intervalMin, uint16_t intervalMax)
 {
+    runOnParam_t param = {
+        .u16param1 = intervalMin,
+        .u16param2 = intervalMax,
+        .outParam = QV_STATUS_WRONG_STATE,
+    };
+
+    uint32_t ret = gpSched_RunOn(qvCHIP_BleSetAdvInterval_Internal, (void*)&param);
+
+    GP_ASSERT_DEV_EXT(ret == RUNON_STATUS_OK);
+
+    return param.outParam;
+}
+static uint32_t qvCHIP_BleSetAdvData_Internal(void* arg)
+{
+    GP_ASSERT_DEV_EXT(arg != NULL);
+
+    qvAdvLocation_t location = (qvAdvLocation_t)((runOnParam_t*)arg)->u8param1;
+    uint8_t len = ((runOnParam_t*)arg)->u8param2;
+    uint8_t* pData = (uint8_t*)((runOnParam_t*)arg)->ptrParam;
+
+    GP_ASSERT_DEV_EXT(sizeof(((runOnParam_t*)arg)->u8param1) == sizeof(location));
+    GP_ASSERT_DEV_EXT(sizeof(((runOnParam_t*)arg)->u8param2) == sizeof(len));
+    GP_ASSERT_DEV_EXT(sizeof(((runOnParam_t*)arg)->ptrParam) == sizeof(pData));
+
     if(NULL == pData)
     {
-        return QV_STATUS_INVALID_ARGUMENT;
+        ((runOnParam_t*)arg)->outParam = QV_STATUS_INVALID_ARGUMENT;
+        return RUNON_STATUS_OK;
     }
 
     uint8_t advHandle = DM_ADV_HANDLE_DEFAULT;
 
     /* Set the advertising data */
     DmAdvSetData(advHandle, HCI_ADV_DATA_OP_COMP_FRAG, location, len, pData);
-    return QV_STATUS_NO_ERROR;
+
+    ((runOnParam_t*)arg)->outParam = QV_STATUS_NO_ERROR;
+
+    return RUNON_STATUS_OK;
 }
 
-qvStatus_t qvCHIP_BleStartAdvertising(void)
+qvStatus_t qvCHIP_BleSetAdvData(qvAdvLocation_t location, uint8_t len, uint8_t* pData)
 {
+    runOnParam_t param = {
+        .u8param1 = (uint8_t)location,
+        .u8param2 = len,
+        .ptrParam = (uint32_t)pData,
+        .outParam = QV_STATUS_WRONG_STATE,
+    };
+
+    uint32_t ret = gpSched_RunOn(qvCHIP_BleSetAdvData_Internal, (void*)&param);
+
+    GP_ASSERT_DEV_EXT(ret == RUNON_STATUS_OK);
+
+    return param.outParam;
+}
+
+static uint32_t qvCHIP_BleStartAdvertising_Internal(void* arg)
+{
+    GP_ASSERT_DEV_EXT(arg != NULL);
+
     uint8_t advHandle = DM_ADV_HANDLE_DEFAULT;
     uint8_t maxEaEvents = 0;
     uint16_t advDuration = 0;
@@ -650,21 +890,13 @@ qvStatus_t qvCHIP_BleStartAdvertising(void)
     /* All zero peer address, i.e. no peer */
     const uint8_t peerAddr[] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
 
-    if(qvCHIP_isBleInitiated == false)
-    {
-        return QV_STATUS_WRONG_STATE;
-    }
-
-    /* Since we are using legacy Dm API which allows only one ongoing advertisement
-        it is okay to stop all(numSets = 0) without properly tracking prev. advHandle*/
-    DmAdvStop(0, &advHandle);
-
     /* Set the local Advertising Address type to Random */
     DmAdvSetAddrType(DM_ADDR_RANDOM);
     /* Get a random Advertiser Address */
     if(QV_STATUS_NO_ERROR != qvCHIP_RandomGet(sizeof(randAddr), (uint8_t*)randAddr))
     {
-        return QV_STATUS_INVALID_DATA;
+        ((runOnParam_t*)arg)->outParam = QV_STATUS_INVALID_DATA;
+        return RUNON_STATUS_OK;
     }
     /* Force the random static format on the randomly generated address */
     DM_RAND_ADDR_SET((uint8_t*)randAddr, DM_RAND_ADDR_STATIC);
@@ -678,16 +910,69 @@ qvStatus_t qvCHIP_BleStartAdvertising(void)
     /* Scan advertising */
     DmAdvStart(DM_NUM_ADV_SETS, &advHandle, &advDuration, &maxEaEvents);
 
-    return QV_STATUS_NO_ERROR;
+    ((runOnParam_t*)arg)->outParam = QV_STATUS_NO_ERROR;
+
+    return RUNON_STATUS_OK;
 }
 
-qvStatus_t qvCHIP_BleStopAdvertising(void)
+qvStatus_t qvCHIP_BleStartAdvertising(void)
 {
+    runOnParam_t param = {
+        .outParam = QV_STATUS_WRONG_STATE,
+    };
+
+    if(qvCHIP_isBleInitiated == false)
+    {
+        return QV_STATUS_WRONG_STATE;
+    }
+
+    qvCHIP_BleStopAdvertising();
+
+    uint32_t ret = gpSched_RunOn(qvCHIP_BleStartAdvertising_Internal, (void*)&param);
+
+    while(qvCHIP_Ble_State != QV_BLE_STATE_ADV_STARTED)
+    {
+        vTaskDelay(1);
+    }
+
+    GP_ASSERT_DEV_EXT(ret == RUNON_STATUS_OK);
+
+    return param.outParam;
+}
+
+static uint32_t qvCHIP_BleStopAdvertising_Internal(void* arg)
+{
+    GP_ASSERT_DEV_EXT(arg != NULL);
+
     uint8_t advHandle = DM_ADV_HANDLE_DEFAULT;
 
     DmAdvStop(DM_NUM_ADV_SETS, &advHandle);
 
-    return QV_STATUS_NO_ERROR;
+    ((runOnParam_t*)arg)->outParam = QV_STATUS_NO_ERROR;
+    return RUNON_STATUS_OK;
+}
+
+qvStatus_t qvCHIP_BleStopAdvertising(void)
+{
+    runOnParam_t param = {
+        .outParam = QV_STATUS_WRONG_STATE,
+    };
+
+    if(qvCHIP_isBleInitiated == false)
+    {
+        return QV_STATUS_WRONG_STATE;
+    }
+
+    uint32_t ret = gpSched_RunOn(qvCHIP_BleStopAdvertising_Internal, (void*)&param);
+
+    while(qvCHIP_Ble_State == QV_BLE_STATE_ADV_STARTED)
+    {
+        vTaskDelay(1);
+    }
+
+    GP_ASSERT_DEV_EXT(ret == RUNON_STATUS_OK);
+
+    return param.outParam;
 }
 
 uint16_t qvCHIP_BleGetHandle(bool rxHandle)
@@ -705,15 +990,16 @@ uint16_t qvCHIP_BleGetHandle(bool rxHandle)
 qvStatus_t qvCHIP_BleTaskCreate(void)
 {
     hal_BleTaskCreate();
-    GP_LOG_PRINTF("BLE Task created", 0);
     return QV_STATUS_NO_ERROR;
 }
 
 qvStatus_t qvCHIP_BleTaskDelete(void)
 {
     hal_BleTaskDestroy();
-    GP_LOG_PRINTF("BLE Task deleted", 0);
     return QV_STATUS_NO_ERROR;
 }
 
-bool qvCHIP_IsBleTaskCreated(void) { return hal_IsBleTaskCreated(); }
+bool qvCHIP_IsBleTaskCreated(void)
+{
+    return hal_IsBleTaskCreated();
+}

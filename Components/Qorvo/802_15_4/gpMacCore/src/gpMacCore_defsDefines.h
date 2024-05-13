@@ -40,6 +40,9 @@
 #include "gpMacCore.h"
 #include "gpRxArbiter.h"
 #include "gpHal.h"
+#ifdef GP_MACCORE_DIVERSITY_SECURITY_ENABLED
+#include "gpEncryption.h"
+#endif // GP_MACCORE_DIVERSITY_SECURITY_ENABLED
 #include "gpStat.h"
 
 /*****************************************************************************

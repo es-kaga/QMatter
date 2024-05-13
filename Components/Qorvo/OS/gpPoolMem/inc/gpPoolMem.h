@@ -150,5 +150,3 @@ UInt32 gpPoolMem_GetMaxAvailableChunkSize(void);
 #endif //defined(GP_DIVERSITY_ROM_CODE)
 
 #endif // _GPPOOLMEM_H_
-
-

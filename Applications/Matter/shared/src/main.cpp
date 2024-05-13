@@ -49,6 +49,12 @@
 #if defined(ENABLE_CHIP_SHELL) && ENABLE_CHIP_SHELL
 #include "shell_common/shell.h"
 #endif // ENABLE_CHIP_SHELL
+/* access CHIP_CRYPTO_PSA */
+#include "crypto/CryptoBuildConfig.h"
+#if CHIP_CRYPTO_PSA
+#include "psa/crypto.h"
+#include "psa/crypto_se.h"
+#endif
 
 // Application level logic
 #include "AppTask.h"
@@ -82,13 +88,21 @@ void Application_Init(void)
 {
     CHIP_ERROR error;
 
-
 #if defined(GP_APP_DIVERSITY_POWERCYCLECOUNTING)
     gpAppFramework_Reset_Init();
 #endif
 
     /* Initialize IO */
     qvIO_Init();
+
+#if CHIP_CRYPTO_PSA
+    psa_status_t psa_error = psa_crypto_init();
+    if (psa_error)
+    {
+        ChipLogError(NotSpecified, "psa_crypto_init failed");
+        return;
+    }
+#endif
 
     /* Initialize CHIP stack */
     error = CHIP_Init();
@@ -116,6 +130,7 @@ void Application_Init(void)
         ChipLogError(NotSpecified, "GetAppTask().StartAppTask() failed");
         return;
     }
+
 }
 
 void ChipEventHandler(const ChipDeviceEvent * aEvent, intptr_t /* arg */)
@@ -186,7 +201,7 @@ CHIP_ERROR CHIP_Init(void)
     qvIO_EnableSleep(true);
 #elif CHIP_DEVICE_CONFIG_THREAD_FTD
     ret = ConnectivityMgr().SetThreadDeviceType(ConnectivityManager::kThreadDeviceType_Router);
-    qvIO_EnableSleep(true);
+    qvIO_EnableSleep(false);
 #else
     ret = ConnectivityMgr().SetThreadDeviceType(ConnectivityManager::kThreadDeviceType_MinimalEndDevice);
     qvIO_EnableSleep(false);

@@ -174,24 +174,6 @@ typedef UInt8 halTimer_timerId_t;
  */
 typedef UInt8 halTimer_clkSel_t;
 
-/** @typedef halTimerXL_timerId_t
- *  @brief Identifying the XL timer
- */
-typedef UInt8 halTimerXL_timerId_t;
-
-/** @typedef halTimerXL_countMode_t
- *  @brief Specify Set the input signal for timer
- */
-typedef UInt8 halTimerXL_countMode_t;
-
-/** @typedef halTimerXL_mode_t
- *  @brief Specify single 32-bit, dual 16-bit or disabled.
- */
-typedef UInt8 halTimerXL_mode_t;
-
-/* Callback type (called on timer wrap interrupt) */
-typedef void (*halTimerXL_cbTimerWrapInterruptHandler_t)(void);
-
 /* Callback type (called on timer wrap interrupt) */
 typedef void (*halTimer_cbTimerWrapInterruptHandler_t)(void);
 
@@ -207,11 +189,34 @@ GP_API void halTimer_stopTimer(halTimer_timerId_t timerId);
 GP_API void halTimer_resetTimer(halTimer_timerId_t timerId);
 GP_API void halTimer_setMaskTimerWrapInterrupt(halTimer_timerId_t timerId, UInt8 val);
 
+/**
+ * @brief Wait for at least this many microseconds
+ *
+ * @disclaimer: As this function is interruptable and might make use of a NOP loop
+ *              no guarantee on the upper wait limit can be given.
+ *
+ * @param address       amount of microseconds to wait at least
+ *
+ */
 void hal_Waitus(UInt16 us);
-void hal_Waitms(UInt16 ms);
 
 #define HAL_WAIT_US hal_Waitus
+
+/**
+ * @brief Wait for at least this many milliseconds
+ *
+ * @disclaimer: As this function is interruptable and might make use of a NOP loop
+ *              no guarantee on the upper wait limit can be given.
+ *
+ * @param address       amount of milliseconds to wait at least
+ *
+ */
+void hal_Waitms(UInt16 ms);
+
 #define HAL_WAIT_MS hal_Waitms
+
+
+#define HAL_TIME_COMPARE_LOWER_US(t1, t2) (!((UInt32)((t1) - (t2)) /*&(0xFFFFFFFF)*/ < (0x80000000LU)))
 
 /*****************************************************************************
  *                    DEBUG
@@ -964,6 +969,10 @@ void hal_stopI2S_s(void);
 
 /*****************************************************************************
  *                    MPU
+ *****************************************************************************/
+
+/*****************************************************************************
+ *                    Power Modes
  *****************************************************************************/
 
 #ifdef __cplusplus

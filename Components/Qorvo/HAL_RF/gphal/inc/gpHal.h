@@ -89,7 +89,9 @@
 #ifdef GP_COMP_GPHAL_BLE
 #include "gpHal_Ble.h"          //All BLE related functions
 #endif
+
 #include "gpHal_ES.h"           //Event Scheduler functions
+
 #ifdef GP_COMP_GPHAL_SEC
 #include "gpHal_SEC.h"          //Security functions
 #endif //GP_COMP_GPHAL_SEC

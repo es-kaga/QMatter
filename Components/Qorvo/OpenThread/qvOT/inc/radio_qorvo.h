@@ -90,7 +90,7 @@ void qorvoRadioSetRxOnWhenIdle(bool rxOnWhenIdle);
  * @param[out]  aIeeeEui64  The MAC address of the radio.
  *
  */
-void qorvoRadioGetIeeeEui64(uint8_t *aIeeeEui64);
+void qorvoRadioGetIeeeEui64(uint8_t* aIeeeEui64);
 
 /**
  * This function transmits a frame.
@@ -98,7 +98,7 @@ void qorvoRadioGetIeeeEui64(uint8_t *aIeeeEui64);
  * @param[in]  aFrame  The frame which needs to be transmitted.
  *
  */
-otError qorvoRadioTransmit(otRadioFrame *aFrame);
+otError qorvoRadioTransmit(otRadioFrame* aFrame);
 
 /**
  * This function sets the PanId.
@@ -122,7 +122,7 @@ void qorvoRadioSetShortAddress(uint16_t address);
  * @param[in]  address  The extended address.
  *
  */
-void qorvoRadioSetExtendedAddress(const uint8_t *address);
+void qorvoRadioSetExtendedAddress(const uint8_t* address);
 
 /**
  * This function enables source address matching for indirect transmit.
@@ -154,7 +154,7 @@ otError qorvoRadioAddSrcMatchShortEntry(uint16_t aShortAddress, uint16_t panid);
  * @param[in]  panid          The panid.
  *
  */
-otError qorvoRadioAddSrcMatchExtEntry(const uint8_t *aExtAddress, uint16_t panid);
+otError qorvoRadioAddSrcMatchExtEntry(const uint8_t* aExtAddress, uint16_t panid);
 
 /**
  * This function removes an short address plus panid from the source address match list.
@@ -172,7 +172,7 @@ otError qorvoRadioClearSrcMatchShortEntry(uint16_t aShortAddress, uint16_t panid
  * @param[in]  panid          The panid.
  *
  */
-otError qorvoRadioClearSrcMatchExtEntry(const uint8_t *aExtAddress, uint16_t panid);
+otError qorvoRadioClearSrcMatchExtEntry(const uint8_t* aExtAddress, uint16_t panid);
 
 /**
  * This function gets the transmit power for current channel
@@ -180,7 +180,7 @@ otError qorvoRadioClearSrcMatchExtEntry(const uint8_t *aExtAddress, uint16_t pan
  * @param[out]  aPower  The transmit power
  *
  */
-otError qorvoRadioGetTransmitPower(int8_t *aPower);
+otError qorvoRadioGetTransmitPower(int8_t* aPower);
 
 /**
  * This function sets the transmit power for current channel
@@ -220,12 +220,8 @@ void qorvoRadioSetPromiscuous(bool aEnable);
  * @param[in]  aKeyType    Key Type used.
  *
  */
-void qorvoRadioSetMacKey(uint8_t        aKeyIdMode,
-                         uint8_t        aKeyId,
-                         const uint8_t *aPrevKey,
-                         const uint8_t *aCurrKey,
-                         const uint8_t *aNextKey,
-                         uint8_t        aKeyType);
+void qorvoRadioSetMacKey(uint8_t aKeyIdMode, uint8_t aKeyId, const uint8_t* aPrevKey, const uint8_t* aCurrKey,
+                         const uint8_t* aNextKey, uint8_t aKeyType);
 
 /**
  * This method sets the current MAC frame counter value.
@@ -251,9 +247,7 @@ void qorvoRadioSetMacFrameCounter(uint32_t aMacFrameCounter);
  * @retval  kErrorNone           Successfully enabled or disabled CSL.
  *
  */
-otError qorvoRadioEnableCsl(uint32_t       aCslPeriod,
-                            uint16_t       aShortAddr,
-                            const uint8_t *aExtAddr);
+otError qorvoRadioEnableCsl(uint32_t aCslPeriod, uint16_t aShortAddr, const uint8_t* aExtAddr);
 
 /**
  * Update CSL sample time in radio driver.
@@ -284,9 +278,8 @@ void qorvoRadioUpdateCslSampleTime(uint32_t aCslSampleTime);
  * @retval  OT_ERROR_NO_BUFS         No more Initiator can be supported.
  *
  */
-otError qorvoRadioConfigureEnhAckProbing(otLinkMetrics  aLinkMetrics,
-                                         uint16_t       aShortAddress,
-                                         const uint8_t *aExtAddress);
+otError qorvoRadioConfigureEnhAckProbing(otLinkMetrics aLinkMetrics, uint16_t aShortAddress,
+                                         const uint8_t* aExtAddress);
 
 /**
  * Get the current estimated time (in microseconds) of the radio chip.
@@ -319,6 +312,30 @@ otError qorvoRadioReceiveAt(uint8_t aChannel, uint32_t aStart, uint32_t aDuratio
 otRadioCaps qorvoRadioGetCaps(void);
 
 /**
+ * Register the NeighbourTable callback with the openthread stack.
+ *
+ */
+void qorvoRegisterNeighbourTableCallback(bool aEnable);
+
+/**
+ * This function is called when OpenThread adds a Child to the Neigbour table.
+ *
+ * @param[in]  aShortAddress    The child's rloc16
+ * @param[in]  aExtAddress      The child's extended address
+ *
+ */
+void qorvoRadioHandleChildAdded(uint16_t aShortAddress, const uint8_t* aExtAddress);
+
+/**
+ * This function is called when OpenThread removes a Child from the Neigbour table.
+ *
+ * @param[in]  aShortAddress    The child's rloc16
+ * @param[in]  aExtAddress      The child's extended address
+ *
+ */
+void qorvoRadioHandleChildRemoved(uint16_t aShortAddress, const uint8_t* aExtAddress);
+
+/**
  * This callback is called when the energy scan is finished.
  *
  * @param[in]  aEnergyScanMaxRssi  The amount of energy detected during the ED scan.
@@ -334,7 +351,7 @@ void cbQorvoRadioEnergyScanDone(int8_t aEnergyScanMaxRssi);
  * @param[in]  aError         Indicates if an error occurred during transmission.
  *
  */
-void cbQorvoRadioTransmitDone(otRadioFrame *aFrame, bool aFramePending, otError aError);
+void cbQorvoRadioTransmitDone(otRadioFrame* aFrame, bool aFramePending, otError aError);
 
 /**
  * This callback is called after a transmission is completed (and if required an ACK is received).
@@ -344,7 +361,7 @@ void cbQorvoRadioTransmitDone(otRadioFrame *aFrame, bool aFramePending, otError 
  * @param[in]  aError         Indicates if an error occurred during transmission.
  *
  */
-void cbQorvoRadioTransmitDone_AckFrame(otRadioFrame *aFrame, otRadioFrame *aAckFrame, otError aError);
+void cbQorvoRadioTransmitDone_AckFrame(otRadioFrame* aFrame, otRadioFrame* aAckFrame, otError aError);
 
 /**
  * This callback is called after a frame is received.
@@ -353,7 +370,7 @@ void cbQorvoRadioTransmitDone_AckFrame(otRadioFrame *aFrame, otRadioFrame *aAckF
  * @param[in]  aError   Any error which occurred during reception of the packet.
  *
  */
-void cbQorvoRadioReceiveDone(otRadioFrame *aFrame, otError aError);
+void cbQorvoRadioReceiveDone(otRadioFrame* aFrame, otError aError);
 
 /**
  * This callback is called to notify OpenThread that the transmission has started.
@@ -364,6 +381,5 @@ void cbQorvoRadioReceiveDone(otRadioFrame *aFrame, otError aError);
  * @param[in]  aFrame     A pointer to the frame that is being transmitted.
  *
  */
-void cbQorvoRadioTxStarted(otRadioFrame *aFrame);
-
+void cbQorvoRadioTxStarted(otRadioFrame* aFrame);
 #endif // _RADIO_QORVO_H_

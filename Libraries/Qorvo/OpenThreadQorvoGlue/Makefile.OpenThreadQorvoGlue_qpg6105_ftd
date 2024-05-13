@@ -5,16 +5,17 @@ ifndef BASEDIR
 BASEDIR:=$(abspath $(dir $(abspath $(lastword $(MAKEFILE_LIST)))))
 endif
 # Global vars
-OPENTHREAD_REPO_DIR ?= $(BASEDIR)/../../../Components/ThirdParty/Matter/repo/third_party/openthread/repo
 FREERTOS_REPO_DIR ?= $(BASEDIR)/../../../Components/ThirdParty/Matter/repo/third_party/freertos/repo
 OS_USED?=LINUX
-GPHUB_ROOT?=/builds/grWvE2xA/3/qorvo/wcon/lps_sw/depot/gpHub
+GPHUB_ROOT?=/builds/GooxPtdA/3/qorvo/wcon/lps_sw/depot/gpHub
 ROOTDIR?=$(BASEDIR)/../../..
 WORKDIR?=$(BASEDIR)/../../../Work/OpenThreadQorvoGlue_qpg6105_ftd
 ENV_PATH?=$(BASEDIR)/../../..
 PYTHON_BIN?=/usr/bin/python3
 CURRENT_CONF:=libopenthread_qpg6105_ftd.py
 EXTRA_CONF:=
+
+OPENTHREAD_REPO_DIR?=$(BASEDIR)/../../../Components/ThirdParty/OpenThread/ot-qorvo/openthread
 
 CONFIG_HEADER:=$(BASEDIR)/../../../Libraries/Qorvo/OpenThreadQorvoGlue/gen/OpenThreadQorvoGlue_qpg6105_ftd/qorvo_config.h
 INTERNALS_HEADER:=$(BASEDIR)/../../../Libraries/Qorvo/OpenThreadQorvoGlue/gen/OpenThreadQorvoGlue_qpg6105_ftd/qorvo_internals.h
@@ -27,14 +28,6 @@ POSTBUILD_SCRIPT:=
 FLAGS=
 # Build variables
 ARMCHIP=K8E
-CFLAGS_COMPILER += -ffile-prefix-map=/builds/grWvE2xA/3/qorvo/wcon/lps_sw/depot/Components/Qorvo/OpenThread=QorvoThreadApp
-CFLAGS_COMPILER += -ffile-prefix-map=/builds/grWvE2xA/3/qorvo/wcon/lps_sw/depot/Components/Qorvo=QorvoComponents
-CFLAGS_COMPILER += -ffile-prefix-map=/builds/grWvE2xA/3/qorvo/wcon/lps_sw/depot/Components/ThirdParty/OpenThread/ot-qorvo/public=ot-qorvo
-CFLAGS_COMPILER += -ffile-prefix-map=/builds/grWvE2xA/3/qorvo/wcon/lps_sw/depot/Components/ThirdParty=ThirdParty
-CFLAGS_COMPILER += -ffile-prefix-map=/builds/grWvE2xA/3/qorvo/wcon/lps_sw/depot/gpHub=ThirdParty
-CFLAGS_COMPILER += -ffile-prefix-map=/builds/grWvE2xA/3/qorvo/wcon/lps_sw/depot=QorvoSDK
-CFLAGS_COMPILER += -ffile-prefix-map=/mnt/c/gpHub=ThirdParty
-CFLAGS_COMPILER += -ffile-prefix-map=/mnt/r=ThirdParty
 MCU=cortex-m4
 PRODUCTID?=QPG6105
 SRC_DISABLE_ALIGNMENT_ERROR+=$(BASEDIR)/../../../Components/ThirdParty/Silex/cryptosoc/libcryptosoc/src/cryptodma.c
@@ -154,8 +147,8 @@ INC_gpLog+=-I$(BASEDIR)/../../../Components/Qorvo/OS/gpLog/inc
 INC+=$(INC_gpLog)
 
 #Depends on:
-# src: gphal, gpAssert, gpPd, gpPad, gpRxArbiter, gpPoolMem
-# inc: gpStat, gpEncryption
+# src: gphal, gpAssert, gpPd, gpPad, gpRxArbiter, gpPoolMem, gpEncryption
+# inc: gpStat
 COMPS+=gpMacCore
 INC_gpMacCore:=
 INC_gpMacCore+=-I$(BASEDIR)/../../../Components/Qorvo/802_15_4/gpMacCore/inc
@@ -325,7 +318,7 @@ INC_qvOT+=-I$(BASEDIR)/../../../Components/Qorvo/OpenThread/qvOT/inc
 INC_qvOT+=-I$(OPENTHREAD_REPO_DIR)/examples/platforms
 INC_qvOT+=-I$(OPENTHREAD_REPO_DIR)/include
 INC_qvOT+=-I$(OPENTHREAD_REPO_DIR)/src/core
-INC_qvOT+=-I$(BASEDIR)/../../../Components/ThirdParty/OpenThread/ot-qorvo/public/src/qpg6105
+INC_qvOT+=-I$(BASEDIR)/../../../Components/ThirdParty/OpenThread/ot-qorvo/src/qpg6105
 INC+=$(INC_qvOT)
 SRC_NOWARNING+=$(SRC_qvOT)
 

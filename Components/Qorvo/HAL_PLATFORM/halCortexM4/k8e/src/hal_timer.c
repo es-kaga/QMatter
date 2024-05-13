@@ -207,10 +207,12 @@ void halTimer_initTimer(halTimer_timerId_t timerId,
         halTimer_cbTimerWrapInterruptHandler_t Inthandler,
         Bool isPeriodic)
 {
-    GP_ASSERT_DEV_INT(timerId < HAL_TIMER_COUNT);
+    GP_ASSERT_DEV_EXT(timerId < HAL_TIMER_COUNT);
     /* reserve timer */
     /* assert timer is free */
-    GP_ASSERT_DEV_INT(BIT_TST(halTimer_state.timerInUse, timerId) == 0);
+    /* PWM driver LEDS configured in BSP also use one of the timer blocks */
+    GP_ASSERT_DEV_EXT(BIT_TST(GP_WB_READ_TIMERS_TMR_ENABLES(), timerId) == 0);
+    GP_ASSERT_DEV_EXT(BIT_TST(halTimer_state.timerInUse, timerId) == 0);
     BIT_SET(halTimer_state.timerInUse, timerId);
 
     if (isPeriodic == true)

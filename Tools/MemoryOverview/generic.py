@@ -24,16 +24,23 @@ class Categorization(object):
         "Application",
     ]
 
+    # Adding CHIP prefixes after SDK compilation
+    freertos_files = FreeRTOS.base_files
+    freertos_files += ["sdk." + file_name for file_name in freertos_files]
+
+    security_files = Security.base_files + Security.silex_crypto_soc_files + Security.mbed_tls_files
+    security_files += ["sdk." + file_name for file_name in security_files]
+
     files = {
         "Thread": ["libopenthread"],
-        "Security": Security.base_files + Security.silex_crypto_soc_files + Security.mbed_tls_files,
+        "Security": security_files,
         "BLE Base": Ble.base_files,
         "BLE": ["BleModule"] + Ble.arm_cordio_files,
         "MAC": Mac.base_files,
         "Mesh": [],
         "Debug": ["gpLog", "gpAssert"],
         "Library": ["crt"],
-        "RTOS": ["freertos", "gpFreeRTOS"] + FreeRTOS.base_files,
+        "RTOS": ["freertos", "gpFreeRTOS"] + freertos_files,
         "Bootloader": ["gpUpgrade", "gpOta", "gpSecureBoot", "lzma"],
         "Base": ["gp", "hal", "default", "handlers", "iar", "ivt", "rom_access", "dig_hal"],
     }
@@ -68,9 +75,7 @@ class Categorization(object):
     archives = {
         "Thread": {"libopenthread": [],
                    },
-        "Security": {"libmbedcrypto": [],
-                     "libmbedtls": [],
-                     },
+        "Security": Security.archives,
         "BLE Base": {
         },
         "BLE": {

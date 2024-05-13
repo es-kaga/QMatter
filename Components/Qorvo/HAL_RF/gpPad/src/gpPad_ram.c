@@ -119,6 +119,9 @@ static UInt8 Pad_GetMinBeRetransmit(gpPad_Handle_t padHandle);
 static void Pad_SetMaxBeRetransmit(gpPad_Handle_t padHandle, UInt8 maxBERetransmit);
 static UInt8 Pad_GetMaxBeRetransmit(gpPad_Handle_t padHandle);
 
+static void Pad_SetCcaFailureAsNoAck(gpPad_Handle_t padHandle, Bool ccaFailureAsNoAck);
+static Bool Pad_GetCcaFailureAsNoAck(gpPad_Handle_t padHandle);
+
 /*****************************************************************************
  *                    Static Function Definitions
  *****************************************************************************/
@@ -164,6 +167,8 @@ static void Pad_Init(void)
     NOT_USED(Pad_GetMinBeRetransmit);
     NOT_USED(Pad_SetMaxBeRetransmit);
     NOT_USED(Pad_GetMaxBeRetransmit);
+    NOT_USED(Pad_SetCcaFailureAsNoAck);
+    NOT_USED(Pad_GetCcaFailureAsNoAck);
 }
 
 static gpPad_Handle_t Pad_GetPad(gpPad_Attributes_t* pInitAttributes)
@@ -390,4 +395,15 @@ static UInt8 Pad_GetMaxBeRetransmit(gpPad_Handle_t padHandle)
 {
     GP_ASSERT_DEV_EXT(PAD_CHECK_HANDLE_ACCESSIBLE(padHandle));
     return gpPad_Descriptors[padHandle].maxBERetransmit;
+}
+
+static void Pad_SetCcaFailureAsNoAck(gpPad_Handle_t padHandle, Bool ccaFailureAsNoAck)
+{
+    GP_ASSERT_DEV_EXT(PAD_CHECK_HANDLE_ACCESSIBLE(padHandle));
+    gpPad_Descriptors[padHandle].ccaFailureAsNoAck = ccaFailureAsNoAck;
+}
+static Bool Pad_GetCcaFailureAsNoAck(gpPad_Handle_t padHandle)
+{
+    GP_ASSERT_DEV_EXT(PAD_CHECK_HANDLE_ACCESSIBLE(padHandle));
+    return gpPad_Descriptors[padHandle].ccaFailureAsNoAck;
 }

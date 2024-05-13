@@ -38,9 +38,14 @@
 
 #include "gpLog.h"
 #include "gpAssert.h"
-#include "gpWmrk.h"
 #include "gpPoolMem.h"
 #include "gpPoolMem_defs.h"
+
+#define gpWmrk_Init()
+#define gpWmrk_Subscribe(params) 0
+#define gpWmrk_CntrToLimit(id)
+#define gpWmrk_CntrFromLimit(id)
+#define gpWmrk_CntrSet(id, val)
 
 /*****************************************************************************
  *                    Macro Definitions

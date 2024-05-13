@@ -25,7 +25,7 @@
 /** @file "trng.c"
  *
  *  True random number generator for Qorvo chips
-*/
+ */
 
 #if !defined(MBEDTLS_CONFIG_FILE)
 #include "mbedtls/config.h"
@@ -33,27 +33,25 @@
 #include MBEDTLS_CONFIG_FILE
 #endif
 
-#include "qvCHIP.h"
-
 #if defined(MBEDTLS_ENTROPY_HARDWARE_ALT) && defined(MBEDTLS_ENTROPY_C)
 
 #include "mbedtls/entropy.h"
 
-int mbedtls_hardware_poll(void* data,
-                          unsigned char* output,
-                          size_t len,
-                          size_t* olen)
+extern void gpRandom_GetFromDRBG(uint8_t nmbrRandomBytes, uint8_t* pBuffer);
+
+int mbedtls_hardware_poll(void* data, unsigned char* output, size_t len, size_t* olen)
 {
     (void)data;
 
-#if !defined(MBEDTLS_SW_ONLY)
-    if(QV_STATUS_NO_ERROR != qvCHIP_RandomGetDRBG(len, output))
+    if(NULL == output || 0 == len)
     {
         return -1;
     }
-#else
-    *output = 0xAA;
-#endif
+    if(len > 256)
+    {
+        len = 256;
+    }
+    gpRandom_GetFromDRBG((uint8_t)len, (uint8_t*)output);
 
     *olen = len;
     return 0;

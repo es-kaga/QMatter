@@ -33,96 +33,26 @@
  * Enabled components
  */
 
-#define GP_COMP_GPHAL_PBM
 
 /*
  * Components numeric ids
  */
 
 #define GP_COMPONENT_ID_APP                                1
-#define GP_COMPONENT_ID_ASSERT                             29
-#define GP_COMPONENT_ID_BSP                                8
-#define GP_COMPONENT_ID_GPHAL                              7
-#define GP_COMPONENT_ID_HALCORTEXM4                        6
-#define GP_COMPONENT_ID_JUMPTABLES_K8E                     60
-#define GP_COMPONENT_ID_LOG                                11
-#define GP_COMPONENT_ID_PAD                                126
-#define GP_COMPONENT_ID_PD                                 104
-#define GP_COMPONENT_ID_RANDOM                             108
-#define GP_COMPONENT_ID_RESET                              33
-#define GP_COMPONENT_ID_RT_NRT_COMMON                      -1
-#define GP_COMPONENT_ID_SCHED                              9
-#define GP_COMPONENT_ID_STAT                               22
-#define GP_COMPONENT_ID_UTILS                              4
-
-/*
- * Component: gpBsp
- */
-
-#define GP_DIVERSITY_QPG6105DK_B01
-
-/*
- * Component: gphal
- */
-
-#define GP_COMP_GPHAL_ES
-#define GP_COMP_GPHAL_ES_ABS_EVENT
-#define GP_COMP_GPHAL_ES_EXT_EVENT
-#define GP_COMP_GPHAL_ES_REL_EVENT
-#define GP_DIVERSITY_GPHAL_INTERN
-#define GP_DIVERSITY_GPHAL_K8E
-#define GP_DIVERSITY_GPHAL_OSCILLATOR_BENCHMARK
-#define GP_DIVERSITY_RT_SYSTEM_IN_ROM
-#define GP_DIVERSITY_RT_SYSTEM_MACFILTER_IN_ROM
-#define GP_DIVERSITY_RT_SYSTEM_PARTS_IN_ROM
-
-/*
- * Component: gpJumpTables_k8e
- */
-
-#define GP_DIVERSITY_JUMPTABLES
-#define GP_DIVERSITY_JUMP_TABLE_ASSEMBLY
-
-/*
- * Component: gpPd
- */
-
-#define GP_DIVERSITY_PD_USE_PBM_VARIANT
-
-/*
- * Component: gpUtils
- */
-
-#define GP_UTILS_DIVERSITY_LINKED_LIST
-
-/*
- * Component: halCortexM4
- */
-
-#define GP_BSP_CONTROL_WDT_TIMER
-#define GP_DIVERSITY_ENABLE_DEFAULT_BOD_HANDLING
-#define GP_KX_FLASH_SIZE                                   1024
-#define GP_KX_SYSRAM_SIZE                                  32
-#define GP_KX_UCRAM_SIZE                                   96
-#define HAL_DIVERSITY_NO_FPU
-#define QPG6105
-
-/*
- * Component: mbedtls_alt_qpg6105
- */
-
-#define MBEDTLS_CONFIG_FILE                                "qpg6105-mbedtls-config.h"
 
 /*
  * Other flags
  */
 
 #define GP_BLE_NR_OF_CONNECTION_COMPLETE_EVENT_BUFFERS     0
-#define GP_DIVERSITY_CORTEXM4
-#define GP_DIVERSITY_KEEP_NRT_FROM_FPGABITMAP
-#define GP_GIT_DESCRIBE                                    "256a0797"
-#define GP_GIT_SHA                                         256a0797e7cace164dbd28aec4688d506ca1abfc
-#define GP_GIT_SHA_SHORT                                   256a079
+#define GP_GIT_DESCRIBE                                    "1ca9f7e6c"
+#define GP_GIT_SHA                                         1ca9f7e6c47f535afe1234f2176489f563761bc8
+#define GP_GIT_SHA_SHORT                                   1ca9f7e
 #define GP_HAL_ES_ABS_EVENT_NMBR_OF_EVENTS                 0
+#define GP_SCHED_NR_OF_IDLE_CALLBACKS                      0
+#define MBEDTLS_CONFIG_FILE                                "qpg6105-mbedtls-config.h"
+#define OPENTHREAD_CONFIG_COMMISSIONER_ENABLE              1
+#define OPENTHREAD_CONFIG_JOINER_ENABLE                    1
+#define OPENTHREAD_CONFIG_TCP_ENABLE                       1
 
 #endif //_QORVO_INTERNALS_H_

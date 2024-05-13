@@ -335,7 +335,6 @@ void gpHal_RCIInterrupt(void)
 
     UInt16 rciPending;
 
-    GP_STAT_SAMPLE_TIME();
 
     //Using unmasked version - masks are disabled here in internal version
     rciPending = GP_WB_READ_RCI_UNMASKED_INTERRUPTS();
@@ -736,7 +735,6 @@ GP_COMPILE_TIME_VERIFY(GPHAL_ISR_RCI_HP_ISR_UNMASKED & GP_WB_RCI_UNMASKED_BLE_CO
 #endif //GP_COMP_GPHAL_BLE
 void gpHal_ISR_RCIInterrupt(UInt16 highPrioRciPending)
 {
-    GP_STAT_SAMPLE_TIME();
 
 #ifdef GP_COMP_GPHAL_BLE
     if(highPrioRciPending & GP_WB_RCI_UNMASKED_BLE_CONN_REQ_IND_INTERRUPT_MASK) // Rx_ConnectReqInd_Irq

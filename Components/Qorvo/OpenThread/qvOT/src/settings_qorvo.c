@@ -82,8 +82,8 @@ GP_COMPILE_TIME_VERIFY(QORVOOPENTHREAD_MAX_CHILDREN <= QVOT_MAX_SUPPORTED_CHILDR
 #define NVM_TAG_OPENTHREAD_CHILDINFO_BASE 0x10
 
 #define NVM_TAG_OPENTHREAD_SIZEOF_NROFCHILDRENSTORED (1)
-#define NVM_TAG_OPENTHREAD_SIZEOF_ACTIVEDATASET      (120) /* bytes. The spec requests 255, but it never uses more than 120. */
-#define NVM_TAG_OPENTHREAD_SIZEOF_PENDINGDATASET     (120) /* bytes. */
+#define NVM_TAG_OPENTHREAD_SIZEOF_ACTIVEDATASET      (120) /* bytes. 255 by the spec, 120 in practice */
+#define NVM_TAG_OPENTHREAD_SIZEOF_PENDINGDATASET     (120) /* bytes. pending = active dataset + pending ts and timer */
 #define NVM_TAG_OPENTHREAD_SIZEOF_NETWORKINFO        (38)  /* bytes. */
 #define NVM_TAG_OPENTHREAD_SIZEOF_PARENTINFO         (10)  /* bytes. */
 #define NVM_TAG_OPENTHREAD_SIZEOF_SLAACIIDSECRETKEY  (32)  /* bytes. */
@@ -92,12 +92,11 @@ GP_COMPILE_TIME_VERIFY(QORVOOPENTHREAD_MAX_CHILDREN <= QVOT_MAX_SUPPORTED_CHILDR
 #define NVM_TAG_OPENTHREAD_SIZEOF_SRPCLIENTINFO      (18)  /* bytes. OT_IP6_ADDRESS_SIZE + port(uint16) */
 #define NVM_TAG_OPENTHREAD_SIZEOF_SRPSERVERINFO      (18)  /* bytes. OT_IP6_ADDRESS_SIZE + port(uint16) */
 #define NVM_TAG_OPENTHREAD_SIZEOF_BRULAPREFIX        (17)  /* bytes. OT_IP6_ADDRESS_SIZE + length(uint8) */
-#define NVM_TAG_OPENTHREAD_SIZEOF_CHILDINFO          (17)  /* bytes. Note that there can be multiple entries of this key ! */
+#define NVM_TAG_OPENTHREAD_SIZEOF_CHILDINFO          (17)  /* bytes. One for each child */
 
 #define NVM_TAG_OPENTHREAD_HEADERSIZE (offsetof(NvmTagsBuffer, NvmData))
 
-typedef struct
-{
+typedef struct {
     uint8_t dataValid;
     uint8_t dataSize; /* Note: dataSize type needs to be adapted if any tag size would be larger than 255 ! */
     union {
@@ -418,19 +417,20 @@ static bool qorvoSettings_DefaultInitializer(const ROM void* pTag, uint8_t* pBuf
     {
         GP_LOG_SYSTEM_PRINTF(LOG_PREFIX "CRIT: Did not find tag id 0x%4x", 0, tag.uniqueTagId);
         GP_ASSERT_DEV_INT(false);
-        return false; //Signal NVM init failure
+        return false; // Signal NVM init failure
     }
 
     return true;
 }
 
-/* Special functionality to delete a ChildInfo tag */
-/* In case a single entry is deleted from the childInfo list, we shift all the subsequent childInfo entries */
-/* This has the advantage that the ChildInfo entries are always in a list without gaps, making the code much easier */
-/* the disadvantage is that we need to perform multiple NVM accesses to shift all entries, but we assume this  */
-/* scenario does not occur often */
-/* We also assume that the OpenThread code does not remember the indexes in the NVM */
-/* and that if it iterates of the ChildInfo entries, it will only delete one entry during a full loop over all entries */
+/* Special functionality to delete a ChildInfo tag
+ * In case a single entry is deleted from the childInfo list, we shift all the subsequent childInfo entries
+ * This has the advantage that the ChildInfo entries are always in a list without gaps, making the code much easier
+ * the disadvantage is that we need to perform multiple NVM accesses to shift all entries, but we assume this
+ * scenario does not occur often
+ * We also assume that the OpenThread code does not remember the indexes in the NVM
+ * and that if it iterates of the ChildInfo entries, it will only delete one entry during a full loop over all entries
+ */
 static otError qorvoSettings_DeleteChild(int childOffset)
 {
     GP_LOG_PRINTF(LOG_PREFIX "delete child %i/%u", 0, childOffset, qorvoSettings_NrOfChildrenStored);
@@ -442,13 +442,12 @@ static otError qorvoSettings_DeleteChild(int childOffset)
         {
             gpNvm_ClearProtected(GP_COMPONENT_ID, NVM_TAG_OPENTHREAD_CHILDINFO_BASE + i);
         }
-
         qorvoSettings_NrOfChildrenStored = 0;
     }
     else if((childOffset < 0) || (childOffset >= qorvoSettings_NrOfChildrenStored))
     {
         // Out of bounds of stored entries
-        GP_LOG_PRINTF(LOG_PREFIX "WARN: Child not fount", 0);
+        GP_LOG_PRINTF(LOG_PREFIX "WARN: Child not found", 0);
         return OT_ERROR_NOT_FOUND;
     }
     else
@@ -466,13 +465,15 @@ static otError qorvoSettings_DeleteChild(int childOffset)
         }
 
         // Remove the last entry
-        gpNvm_ClearProtected(GP_COMPONENT_ID, NVM_TAG_OPENTHREAD_CHILDINFO_BASE + (qorvoSettings_NrOfChildrenStored - 1));
+        gpNvm_ClearProtected(GP_COMPONENT_ID,
+                             NVM_TAG_OPENTHREAD_CHILDINFO_BASE + (qorvoSettings_NrOfChildrenStored - 1));
 
         qorvoSettings_NrOfChildrenStored--;
     }
 
     // Update number of stored in NVM
-    gpNvm_BackupProtected(GP_COMPONENT_ID, NVM_TAG_OPENTHREAD_NROFCHILDRENSTORED, (uint8_t*)(&qorvoSettings_NrOfChildrenStored));
+    gpNvm_BackupProtected(GP_COMPONENT_ID, NVM_TAG_OPENTHREAD_NROFCHILDRENSTORED,
+                          (uint8_t*)(&qorvoSettings_NrOfChildrenStored));
 
     return OT_ERROR_NONE;
 }
@@ -490,7 +491,8 @@ void qorvoSettingsInit()
     if(qorvoSettings_NrOfChildrenStored > QORVOOPENTHREAD_MAX_CHILDREN)
     {
         qorvoSettings_NrOfChildrenStored = 0;
-        gpNvm_BackupProtected(GP_COMPONENT_ID, NVM_TAG_OPENTHREAD_NROFCHILDRENSTORED, (uint8_t*)(&qorvoSettings_NrOfChildrenStored));
+        gpNvm_BackupProtected(GP_COMPONENT_ID, NVM_TAG_OPENTHREAD_NROFCHILDRENSTORED,
+                              (uint8_t*)(&qorvoSettings_NrOfChildrenStored));
     }
 }
 
@@ -526,7 +528,8 @@ otError qorvoSettingsGet(uint16_t aKey, int aChildIndex, uint8_t* aValue, uint16
 
     if(buffer.dataValid == 1) // 0xFF will be set after NVM clearing
     {
-        GP_LOG_PRINTF(LOG_PREFIX "exp len: %d max len; %d stored: %d", 0, *aValueLength, pKeyTag->maxTagSize, buffer.dataSize);
+        GP_LOG_PRINTF(LOG_PREFIX "exp len: %d max len; %d stored: %d", 0, *aValueLength, pKeyTag->maxTagSize,
+                      buffer.dataSize);
         *aValueLength = buffer.dataSize;
         // Should never be stored with a higher length
         if(*aValueLength > pKeyTag->maxTagSize)
@@ -559,8 +562,8 @@ otError qorvoSettingsAdd(uint16_t aKey, bool isFlatTag, const uint8_t* aValue, u
     // for ChildInfo entries, the nvm entries are added on top of the existing entries
     // for all other entries, the nvm entries are overwriting the existing entry
     if(((aKey == OT_SETTINGS_KEY_CHILD_INFO) && (isFlatTag == true)) ||
-       ((aKey != OT_SETTINGS_KEY_CHILD_INFO) && (isFlatTag == false)) ||
-       (aValue == NULL) || (aValueLength > pKeyTag->maxTagSize))
+       ((aKey != OT_SETTINGS_KEY_CHILD_INFO) && (isFlatTag == false)) || (aValue == NULL) ||
+       (aValueLength > pKeyTag->maxTagSize))
     {
         return OT_ERROR_INVALID_ARGS;
     }
@@ -578,13 +581,14 @@ otError qorvoSettingsAdd(uint16_t aKey, bool isFlatTag, const uint8_t* aValue, u
         tagId += qorvoSettings_NrOfChildrenStored;
     }
 
-    //Fill buffer
+    // Fill buffer
     MEMSET(&buffer, 0x00, sizeof(NvmTagsBuffer));
     MEMCPY(&buffer.NvmData, aValue, aValueLength);
     buffer.dataValid = 1;
     buffer.dataSize = (uint8_t)(aValueLength & 0xFF);
 
-    GP_LOG_PRINTF(LOG_PREFIX "add key:%d ind:%d tag:%d: stored %u/%u", 0, aKey, isFlatTag, tagId, buffer.dataSize, pKeyTag->maxTagSize);
+    GP_LOG_PRINTF(LOG_PREFIX "add key:%d ind:%d tag:%d: stored %u/%u", 0, aKey, isFlatTag, tagId, buffer.dataSize,
+                  pKeyTag->maxTagSize);
     gpNvm_BackupProtected(GP_COMPONENT_ID, tagId, (uint8_t*)(&buffer));
 #ifdef GP_LOCAL_LOG
     gpLog_PrintBuffer(aValueLength, (uint8_t*)aValue);
@@ -594,7 +598,8 @@ otError qorvoSettingsAdd(uint16_t aKey, bool isFlatTag, const uint8_t* aValue, u
     if(aKey == OT_SETTINGS_KEY_CHILD_INFO)
     {
         qorvoSettings_NrOfChildrenStored++;
-        gpNvm_BackupProtected(GP_COMPONENT_ID, NVM_TAG_OPENTHREAD_NROFCHILDRENSTORED, (uint8_t*)(&qorvoSettings_NrOfChildrenStored));
+        gpNvm_BackupProtected(GP_COMPONENT_ID, NVM_TAG_OPENTHREAD_NROFCHILDRENSTORED,
+                              (uint8_t*)(&qorvoSettings_NrOfChildrenStored));
     }
 
     return OT_ERROR_NONE;

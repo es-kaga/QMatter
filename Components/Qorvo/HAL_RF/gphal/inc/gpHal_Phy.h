@@ -171,17 +171,19 @@ typedef UInt8 gpHal_Channel_t;
 /** @name gpHal_ChannelSlotIdentifier_t */
 //@{
 /** @brief ChannelSlot for first slot */
-#define gpHal_ChannelSlotIdentifier_0   0x0
+#define gpHal_ChannelSlotIdentifier_0           0x0
 /** @brief ChannelSlot for second slot */
-#define gpHal_ChannelSlotIdentifier_1   0x1
+#define gpHal_ChannelSlotIdentifier_1           0x1
 /** @brief ChannelSlot for third slot */
-#define gpHal_ChannelSlotIdentifier_2   0x2
+#define gpHal_ChannelSlotIdentifier_2           0x2
 /** @brief ChannelSlot for fourth slot */
-#define gpHal_ChannelSlotIdentifier_3   0x3
+#define gpHal_ChannelSlotIdentifier_3           0x3
 /** @brief ChannelSlot for fifth slot */
-#define gpHal_ChannelSlotIdentifier_4   0x4
+#define gpHal_ChannelSlotIdentifier_4           0x4
 /** @brief ChannelSlot for sixth slot */
-#define gpHal_ChannelSlotIdentifier_5   0x5
+#define gpHal_ChannelSlotIdentifier_5           0x5
+/** @brief Invalid value for channel slot */
+#define gpHal_ChannelSlotIdentifier_Invalid     0x6
 /** @typedef gpHal_ChannelSlotIdentifier_t
  *  @brief The gpHal_ChannelSlotIdentifier_t type defines the channel slot used
 */

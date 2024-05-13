@@ -28,6 +28,7 @@
 
 #pragma once
 
+#include "crypto/CryptoBuildConfig.h"
 // For convenience, enable Chip Security Test Mode and disable the requirement for
 // authentication in various protocols.
 //
@@ -40,9 +41,18 @@
  * CHIP_DEVICE_CONFIG_DEVICE_SOFTWARE_VERSION
  *
  * A uint32_t identifying the software version running on the device.
+ * First two bytes are reflecting the Matter standard
+ * Last two bytes are reflecting the SDK version of which the first nibble of the first byte represents the major
+ * version and the second nibble of the first byte has the minor number. The last byte holds the patch number.
+ * example for SDK v0.1.5 with Matter v1.2 standard:
+ * 0x01020105
  */
 #ifndef CHIP_DEVICE_CONFIG_DEVICE_SOFTWARE_VERSION
-#define CHIP_DEVICE_CONFIG_DEVICE_SOFTWARE_VERSION 0x0003 // Can't be removed, needed for OTA file generation.
+#ifndef OTA_TEST_IMAGE
+#define CHIP_DEVICE_CONFIG_DEVICE_SOFTWARE_VERSION 0x01020105
+#else
+#define CHIP_DEVICE_CONFIG_DEVICE_SOFTWARE_VERSION 0x01020106
+#endif
 #endif
 
 /**
@@ -53,9 +63,20 @@
  * {MAJOR_VERSION}.0d{MINOR_VERSION}
  */
 #ifndef CHIP_DEVICE_CONFIG_DEVICE_SOFTWARE_VERSION_STRING
-#define CHIP_DEVICE_CONFIG_DEVICE_SOFTWARE_VERSION_STRING "1.1" // Can't be removed, needed for OTA file generation.
+#ifndef OTA_TEST_IMAGE
+#define CHIP_DEVICE_CONFIG_DEVICE_SOFTWARE_VERSION_STRING "1.2-0.1.5"
+#else
+#define CHIP_DEVICE_CONFIG_DEVICE_SOFTWARE_VERSION_STRING "1.2-0.1.6"
+#endif
 #endif
 
+#if CHIP_CRYPTO_PSA
+// #include "psa/crypto_struct_se.h"
+//  sizeof(struct psa_hash_operation_s) from crypto_struct_se.h
+//  This requires PSA_CRYPTO_IMPLEMENTED to be set in GN buildconfig!
+//  #define CHIP_CONFIG_SHA256_CONTEXT_SIZE sizeof(struct psa_hash_operation_s)
+#define CHIP_CONFIG_SHA256_CONTEXT_SIZE 512
+#endif
 /**
  * CHIP_DEVICE_CONFIG_ENABLE_CHIPOBLE
  *

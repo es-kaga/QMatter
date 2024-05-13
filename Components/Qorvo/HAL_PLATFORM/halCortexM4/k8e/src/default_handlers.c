@@ -40,7 +40,6 @@
 #include "gpAssert.h"
 #include "gpBsp.h"
 #include "gpHal_Calibration.h"
-#include "gpStat.h"
 #ifndef GP_DIVERSITY_KEEP_NRT_IN_FLASH
 #include "gpJumpTables.h"
 #endif //GP_DIVERSITY_KEEP_NRT_IN_FLASH
@@ -58,6 +57,11 @@
 
 #define GP_COMPONENT_ID GP_COMPONENT_ID_HALCORTEXM4
 
+#ifdef GP_DIVERSITY_RT_SYSTEM_PARTS_IN_FLASH
+#ifndef GP_DIVERSITY_RT_SYSTEM_MAX_FLASH_SIZE
+#error Need definition of RT Max Flash size
+#endif // GP_DIVERSITY_RT_SYSTEM_MAX_FLASH_SIZE
+#endif // GP_DIVERSITY_RT_SYSTEM_PARTS_IN_FLASH
 
 #define QTA_NUM_PBMS     7
 #define RCI_NUM_REQUESTS (32 - 4) // do not retain the last 4 as it makes the custom retention overflow into the default ram_regmap location
@@ -93,6 +97,9 @@ extern void hal_init(void);
  *                    External Data Definitions
  *****************************************************************************/
 
+#ifdef GP_DIVERSITY_RT_SYSTEM_PARTS_IN_FLASH
+extern UInt16 gpHal_RtSystem_FlashData[];
+#endif // GP_DIVERSITY_RT_SYSTEM_PARTS_IN_FLASH
 
 /*****************************************************************************
  *                    Static Data Definitions
@@ -360,8 +367,6 @@ void reset_handler(void)
         // Enable interrupts
         HAL_FORCE_ENABLE_GLOBAL_INT();
 
-        // Log when the chip wakes up from sleep
-        GP_STAT_SAMPLE_TIME();
 
         // Restore top of application stack, , just before longjmp
         MEMCPY((void*)((UInt32)HAL_SP_STACK_END_ADDRESS - HAL_SP_BACKUP_SIZE), hal_sp_backup, HAL_SP_BACKUP_SIZE);
@@ -475,8 +480,6 @@ void backup_handler(void)
     // Apply sleep counter calibration factor and realign sleep counter to symbol counter.
     gpHal_RealignTimebase();
 
-    // Log when the chip goes to sleep
-    GP_STAT_SAMPLE_TIME();
     GP_WB_STANDBY_HALT_TIME_REFERENCE();
 
     // Disable BBPLL and dependent items
@@ -574,6 +577,37 @@ void enable_gpio_input_buffers(void)
 
 void setup_gpmicro(void)
 {
+#ifdef GP_DIVERSITY_RT_SYSTEM_PARTS_IN_FLASH
+    // By default, the complete RT runs from ROM.
+    // When we want to include a part of the RT in flash, we need to update the gpmicro program window offset and threshold
+    // The gpmicro has 128 kiB program space. There are 3 windows that can be used to access parts of this address space.
+    // By default, the windows are 64kiB (window 0), 32kiB (window 1) and 32 kiB (window 2) and all pointing to ROM.
+    // If there is a part of the RT in flash, we need to update one of these windows to make sure our flash program is executed.
+    // We select window 1 for this.
+    // Note that these registers expect the data to be presented in the compressed address space (see gpHal_kx_mm_compressed.h).
+    // PROGRAM_WINDOW_THRESHOLD_1 for example is 16 bit, with a resolution of 128 bytes ==> 0x800000 addressable bytes.
+
+    gpHal_Address_t rtSystemStartAddress = (gpHal_Address_t)gpHal_RtSystem_FlashData;
+
+    // By default, the application is compiled to run in the lower part of the flash.
+    // In case the application is running from the upper part, we need to adjust the RT location
+    if(gpHal_FlashRemap_IsFlashSwapped())
+    {
+        rtSystemStartAddress += gpHal_FlashRemap_GetSwapLocationOffset();
+    }
+
+    // WINDOW_THRESHOLD_0 denotes the end of window 0 (= the start of window 1)
+    // This sets the size of window 0 (ROM) to 64 kiB
+    GP_WB_WRITE_GPMICRO_PROGRAM_WINDOW_THRESHOLD_0(START_ADDRESS_OF_RT_PROG_IN_GPM_PM_ADDR_SPACE / GPM_WINDOW_GRANULARITY);
+    // This sets the address of the first instruction from flash
+    GP_WB_WRITE_GPMICRO_PROGRAM_WINDOW_OFFSET_1((GP_MM_FLASH_ADDR_TO_COMPRESSED(rtSystemStartAddress) - START_ADDRESS_OF_RT_PROG_IN_GPM_PM_ADDR_SPACE) / GPM_WINDOW_GRANULARITY);
+    // This sets the location of the RO data for the RT from flash
+    GP_WB_WRITE_GPMICRO_RO_DATA_WINDOW_OFFSET_1((GP_MM_FLASH_ADDR_TO_COMPRESSED(rtSystemStartAddress)) / GPM_WINDOW_GRANULARITY);
+    // Adjust the end of WINDOW_1, based on the RT size.
+    GP_WB_WRITE_GPMICRO_PROGRAM_WINDOW_THRESHOLD_1((START_ADDRESS_OF_RT_PROG_IN_GPM_PM_ADDR_SPACE + GP_DIVERSITY_RT_SYSTEM_MAX_FLASH_SIZE) / GPM_WINDOW_GRANULARITY);
+    // Update vtor pointer. The vt is added at the beginning of the RT app and contains pointers to flash/rom (depending on the exact build)
+    GP_WB_WRITE_GPMICRO_VECTOR_TABLE_OFFSET(START_ADDRESS_OF_RT_PROG_IN_GPM_PM_ADDR_SPACE / GPM_WINDOW_GRANULARITY);
+#endif //def GP_DIVERSITY_RT_SYSTEM_PARTS_IN_FLASH
 }
 
 static void wakeup_restore(void)

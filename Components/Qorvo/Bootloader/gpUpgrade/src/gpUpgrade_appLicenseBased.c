@@ -68,7 +68,6 @@ extern const UInt32 upgImageUserLicenseStart;
 /*****************************************************************************
  *                    Static Function Prototypes
  *****************************************************************************/
-
 /*****************************************************************************
  *                    Public Function Definitions
  *****************************************************************************/
@@ -79,9 +78,14 @@ void gpUpgrade_Init(void)
     UInt32 loadCompleteMW = 0;
 #if   defined(GP_UPGRADE_DIVERSITY_USE_EXTSTORAGE) || defined(GP_UPGRADE_DIVERSITY_COMPRESSION)
     /* Invalidate load completed magic word in preperation of downloading a new image */
-    ret = gpHal_FlashProgramSector(upgImageUserLicenseStart + LOADED_USER_LICENSE_LOAD_COMPLETED_MAGIC_WORD_OFFSET, sizeof(loadCompleteMW), (UInt8*)&loadCompleteMW);
+    ret = gpHal_FlashProgramSector(upgImageUserLicenseStart + USER_LICENSE_PROGRAM_LOADED_MAGIC_WORD_OFFSET,
+                                   sizeof(loadCompleteMW), (UInt8*)&loadCompleteMW);
 #endif
     GP_ASSERT_SYSTEM(ret == gpHal_FlashError_Success);
+
+#if defined(GP_DIVERSITY_LOG)
+    GP_LOG_SYSTEM_PRINTF("Upgrade Loaded MW remove", 0);
+#endif
 }
 
 gpUpgrade_Status_t gpUpgrade_SetPendingImage(UInt32 swVer, UInt32 hwVer, UInt32 startAddr, UInt32 imgSz)
@@ -89,7 +93,6 @@ gpUpgrade_Status_t gpUpgrade_SetPendingImage(UInt32 swVer, UInt32 hwVer, UInt32 
     /* TODO : remove the input arguments */
     gpHal_FlashError_t ret;
     UInt32 progLoadMW;
-    UInt32 loadCompleteMW;
     UInt8 activeImagefreshnessCounter, pendingImagefreshnessCounter;
     UInt32 activeImageAddress, pendingImageAddress;
 #if   defined(GP_UPGRADE_DIVERSITY_USE_EXTSTORAGE) || defined(GP_UPGRADE_DIVERSITY_COMPRESSION)
@@ -124,20 +127,22 @@ gpUpgrade_Status_t gpUpgrade_SetPendingImage(UInt32 swVer, UInt32 hwVer, UInt32 
     pendingImagefreshnessCounter = activeImagefreshnessCounter + 1;
     ret = gpHal_FlashProgramSector(pendingImageAddress + LOADED_USER_LICENSE_FRESHNESS_COUNTER_OFFSET, sizeof(pendingImagefreshnessCounter), (UInt8*)&pendingImagefreshnessCounter);
     GP_ASSERT_SYSTEM(ret == gpHal_FlashError_Success);
-
+#if !defined(GP_UPGRADE_DIVERSITY_COMPRESSION)
     /* Write the load complete magic word to indicate that the pending image is ready to be installed */
-    loadCompleteMW = LOADED_USER_LICENSE_LOAD_COMPLETED_MAGIC_WORD;
+    UInt32 loadCompleteMW = LOADED_USER_LICENSE_LOAD_COMPLETED_MAGIC_WORD;
     ret = gpHal_FlashProgramSector(pendingImageAddress + LOADED_USER_LICENSE_LOAD_COMPLETED_MAGIC_WORD_OFFSET, sizeof(loadCompleteMW), (UInt8*)&loadCompleteMW);
     GP_ASSERT_SYSTEM(ret == gpHal_FlashError_Success);
+#endif
     GP_LOG_PRINTF("Freshness Counter (Active Image) %x, (Pending Image) %lx", 0, activeImagefreshnessCounter, pendingImagefreshnessCounter);
-
     return gpUpgrade_StatusSuccess;
 }
 
 
 void gpUpgrade_Reset(void)
 {
-    UInt32* addr = (UInt32*) GP_MM_RAM_CRC_START;
+    gpUpgrade_ClrCrc();
+    UInt32* addr = (UInt32*)GP_MM_RAM_CRC_START;
+
     *addr = GP_UPGRADE_MAGIC_WORD;
     GP_WB_WRITE_PMUD_SOFT_POR_BOOTLOADER(1);
 }

@@ -280,6 +280,13 @@ Bool Com_AddPendingPacket(gpCom_Packet_t* pPacket)
     }
     HAL_RELEASE_MUTEX(Com_RxMutex);
 
+#if defined(GP_DIVERSITY_FREERTOS) && defined(GP_COMP_SCHED)
+    if (i != GP_COM_RX_PACKET_BUFFERS)
+    {
+        gpSched_NotifySchedTask();
+    }
+#endif
+
     return i != GP_COM_RX_PACKET_BUFFERS;
 }
 

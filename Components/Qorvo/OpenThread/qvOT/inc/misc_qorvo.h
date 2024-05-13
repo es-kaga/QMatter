@@ -39,6 +39,7 @@
 #include <stdbool.h>
 
 void qorvoPlatReset(void);
-void qorvoPlatAssertFail(const char *aFilename, int aLineNumber);
+void qorvoPlatAssertFail(const char* aFilename, int aLineNumber);
+void qorvoGetUserLicense(void);
 
-#endif  // _MISC_QORVO_H_
+#endif // _MISC_QORVO_H_

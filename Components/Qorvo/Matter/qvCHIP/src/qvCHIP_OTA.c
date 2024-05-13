@@ -27,7 +27,7 @@
  *  OTA Upgrade functionality
  *
  *  Implementation of qvCHIP OTA API
-*/
+ */
 
 /*****************************************************************************
  *                    Includes Definitions
@@ -36,7 +36,7 @@
 
 #define GP_COMPONENT_ID GP_COMPONENT_ID_QVCHIP
 
-//#define GP_LOCAL_LOG
+// #define GP_LOCAL_LOG
 
 #include "qvCHIP.h"
 #include "gpLog.h"
@@ -61,6 +61,7 @@
 qvCHIP_OtaHeaderValidationCback_t pOtaHeaderValidationCb = NULL;
 qvCHIP_OtaUpgradeHandledCback_t pOtaUpgradeHandledCb = NULL;
 
+static uint32_t OtaLastWriteAddress = 0;
 /* </CodeGenerator Placeholder> StaticData */
 
 /*****************************************************************************
@@ -68,11 +69,10 @@ qvCHIP_OtaUpgradeHandledCback_t pOtaUpgradeHandledCb = NULL;
  *****************************************************************************/
 
 /* <CodeGenerator Placeholder> StaticFunctionDefinitions */
-static qvCHIP_OtaStatus_t OtaMapFileOffsetToMemoryMap(uint32_t chunk_offset, uint32_t length, uint32_t* memorymap_offset);
+static qvCHIP_OtaStatus_t OtaMapFileOffsetToMemoryMap(uint32_t chunk_offset, uint32_t length,
+                                                      uint32_t* memorymap_offset);
 #if !defined(GP_UPGRADE_DIVERSITY_COMPRESSION) && !defined(GP_UPGRADE_DIVERSITY_USE_INTSTORAGE)
-static bool OtaChunkExceedsJumpTableBoundary(uint32_t chunk_offset,
-                                             uint32_t length,
-                                             uint32_t* jump_table_data_size,
+static bool OtaChunkExceedsJumpTableBoundary(uint32_t chunk_offset, uint32_t length, uint32_t* jump_table_data_size,
                                              uint32_t* ota_data_size);
 static qvCHIP_OtaStatus_t OtaWritePartialData(uint32_t offset, uint16_t length, uint8_t* dataChunk);
 #endif
@@ -83,7 +83,8 @@ static qvCHIP_OtaStatus_t OtaWritePartialData(uint32_t offset, uint16_t length, 
  *****************************************************************************/
 
 /* <CodeGenerator Placeholder> StaticFunctionDefinitions */
-static qvCHIP_OtaStatus_t OtaMapFileOffsetToMemoryMap(uint32_t chunk_offset, uint32_t length, uint32_t* memorymap_offset)
+static qvCHIP_OtaStatus_t OtaMapFileOffsetToMemoryMap(uint32_t chunk_offset, uint32_t length,
+                                                      uint32_t* memorymap_offset)
 {
     uint32_t jumptable_length = gpUpgrade_GetJumptableOtaAreaSize();
 
@@ -109,6 +110,7 @@ static qvCHIP_OtaStatus_t OtaMapFileOffsetToMemoryMap(uint32_t chunk_offset, uin
         {
             return qvCHIP_OtaStatusInvalidAddress;
         }
+        GP_LOG_PRINTF("jt chunk sa %lx", 0, gpUpgrade_GetJumptableOtaAreaStartAddress());
         (*memorymap_offset) = chunk_offset + gpUpgrade_GetJumptableOtaAreaStartAddress();
         return qvCHIP_OtaStatusSuccess;
     }
@@ -121,9 +123,7 @@ static qvCHIP_OtaStatus_t OtaMapFileOffsetToMemoryMap(uint32_t chunk_offset, uin
 }
 
 #if !defined(GP_UPGRADE_DIVERSITY_COMPRESSION) && !defined(GP_UPGRADE_DIVERSITY_USE_INTSTORAGE)
-static bool OtaChunkExceedsJumpTableBoundary(uint32_t chunk_offset,
-                                             uint32_t length,
-                                             uint32_t* jump_table_data_size,
+static bool OtaChunkExceedsJumpTableBoundary(uint32_t chunk_offset, uint32_t length, uint32_t* jump_table_data_size,
                                              uint32_t* ota_data_size)
 {
     uint32_t jumptable_length = gpUpgrade_GetJumptableOtaAreaSize();
@@ -154,6 +154,7 @@ static qvCHIP_OtaStatus_t OtaWritePartialData(uint32_t offset, uint16_t length, 
         return result;
     }
 
+    OtaLastWriteAddress = memorymap_offset + length;
     GP_LOG_PRINTF("gpUpgrade_WriteChunkaddr:%lx l:%u", 0, (unsigned long)memorymap_offset, length);
     return (qvCHIP_OtaStatus_t)gpUpgrade_WriteChunk(memorymap_offset, length, dataChunk);
 }
@@ -216,10 +217,11 @@ qvCHIP_OtaStatus_t qvCHIP_OtaWriteChunk(uint32_t offset, uint16_t length, uint8_
 
     if(OtaChunkExceedsJumpTableBoundary(offset, length, &jump_table_data_size, &ota_data_size))
     {
-        //We received a block that contains data for Jumptable and data for upgrade application. This needs to be split
-        //and stored in seperate sections in flash. See Figure 2.2 of the document below to understand how the jumptables
-        //and the application are stored in flash (similar layout for external OTA and internal non-compressed OTA)
-        //Components/Qorvo/Bootloader/vlatest/apps/AppBootloader/doc/pdf/SW30236_AN_Vol_2_Secure_User_Mode_Bootloader_Implementation.pdf
+        // We received a block that contains data for Jumptable and data for upgrade application. This needs to be split
+        // and stored in seperate sections in flash. See Figure 2.2 of the document below to understand how the
+        // jumptables and the application are stored in flash (similar layout for external OTA and internal
+        // non-compressed OTA)
+        // Components/Qorvo/Bootloader/vlatest/apps/AppBootloader/doc/pdf/SW30236_AN_Vol_2_Secure_User_Mode_Bootloader_Implementation.pdf
 
         GP_ASSERT_SYSTEM(length == (jump_table_data_size + ota_data_size));
 
@@ -237,10 +239,11 @@ qvCHIP_OtaStatus_t qvCHIP_OtaWriteChunk(uint32_t offset, uint16_t length, uint8_
 
         return qvCHIP_OtaStatusSuccess;
     }
-#endif //!defined(GP_UPGRADE_DIVERSITY_COMPRESSION) && !defined(GP_UPGRADE_DIVERSITY_USE_INTSTORAGE)
+#endif //! defined(GP_UPGRADE_DIVERSITY_COMPRESSION) && !defined(GP_UPGRADE_DIVERSITY_USE_INTSTORAGE)
 
     result = OtaMapFileOffsetToMemoryMap(offset, length, &memorymap_offset);
 
+    OtaLastWriteAddress = offset + length;
     if(result != qvCHIP_OtaStatusSuccess)
     {
         return result;
@@ -286,9 +289,10 @@ qvCHIP_OtaStatus_t qvCHIP_OtaSetPendingImage(void)
 {
     uint32_t swVer = 0;
     uint32_t hwVer = 0;
-    uint32_t startAddr = 0;
-    uint32_t imgSz = 0;
-    GP_LOG_PRINTF("qvCHIP_OtaSetPendingImage", 0);
+    uint32_t startAddr = gpUpgrade_GetOtaAreaStartAddress();
+    uint32_t imgSz = OtaLastWriteAddress;
+
+    GP_LOG_PRINTF("qvCHIP_OtaSetPendingImage %lx len %ld", 0, startAddr, imgSz);
 
     // NOTE : In this implemenation the arguments provided in this API are unused.
     // Instead the License area based approach is used where the versions are stored

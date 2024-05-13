@@ -41,38 +41,38 @@
 #include "gpLog.h"
 #include "gpSched.h"
 #include "gpHal_Phy.h"
-#include "gpStat.h"
 
 
 #ifdef GP_DIVERSITY_FREERTOS
 #include "timers.h"
 #endif
-/*****************************************************************************
- *                    Macro Definitions
- *****************************************************************************/
 
-// Interval in which chip will wake up to do a calibration
-// In non scheduled case, calibrations will happen when chip wakes
-// up each time and when it handles interrupts
-// The max temperature slope supported is 1 C change per 8 s. So setting
-// the temperature based calibration tasks to run every min in the worst
-// case (if not run in an unscheduled manner already) should capture any
-// 10C change
+ /*****************************************************************************
+  *                    Macro Definitions
+  *****************************************************************************/
+
+ // Interval in which chip will wake up to do a calibration
+ // In non scheduled case, calibrations will happen when chip wakes
+ // up each time and when it handles interrupts
+ // The max temperature slope supported is 1 C change per 8 s. So setting
+ // the temperature based calibration tasks to run every min in the worst
+ // case (if not run in an unscheduled manner already) should capture any
+ // 10C change
 #define CALIBRATION_TASK_SCHED_INTERVAL_US 60000000
 
-// Number of temperature measurements to average to get a stable measurement value
+ // Number of temperature measurements to average to get a stable measurement value
 #define NOF_TEMP_MEASUREMENTS_TO_AVG 4
 
  // rate of calibration timer
 #define CALIBRATION_TIMER_RATE_HZ (1000000 / GP_HAL_CALIBRATION_CHECK_INTERVAL_US)
 #define CALIBRATION_TIMER_PRESCALER 3
  /*****************************************************************************
- *                    Functional Macro Definitions
- *****************************************************************************/
+  *                    Functional Macro Definitions
+  *****************************************************************************/
 
  /*****************************************************************************
- *                    Type Definitions
- *****************************************************************************/
+  *                    Type Definitions
+  *****************************************************************************/
 
  typedef struct {
      gpHal_CalibrationTask_t task;
@@ -111,7 +111,6 @@ static UInt8 HalCalibration_FirstAfterWakeup;
 static UInt8 temperatureMeasurementCounter = 0;
 static Int32 temperatureSum = 0;
 
-
 /*****************************************************************************
  *                    Public Data Definitions
  *****************************************************************************/
@@ -127,34 +126,39 @@ static Bool gpHal_GetCalibrationPendingOnWakeup(UInt8 calTaskId)
 }
 
 #ifdef GP_DIVERSITY_FREERTOS
+static Bool calibration_pending = false;
+
 static void gpHal_CalibrationPendingInternal( void *param1, uint32_t param2)
 {
     (void)param1;
     (void)param2;
     gpHal_CalibrationHandleTasks();
+    calibration_pending = false;
 }
 
 static void gpHal_CalibrationPending(void)
 {
     if (xTaskGetSchedulerState() != taskSCHEDULER_NOT_STARTED)
     {
-        GP_LOG_PRINTF("FreeRTOS calibration task pending",0);
-        BaseType_t xHigherPriorityTaskWoken = pdFALSE;
-        xTimerPendFunctionCallFromISR(gpHal_CalibrationPendingInternal, NULL, 0, &xHigherPriorityTaskWoken);
-        portYIELD_FROM_ISR( xHigherPriorityTaskWoken )
+        if (!calibration_pending)
+        {
+            calibration_pending = true;
+            BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+            xTimerPendFunctionCallFromISR(gpHal_CalibrationPendingInternal, NULL, 0, &xHigherPriorityTaskWoken);
+            portYIELD_FROM_ISR( xHigherPriorityTaskWoken )
+        }
     }
 }
 
 static void gpHal_InitCalibrationTimer(void)
 {
-    halTimer_timerId_t timerId = HAL_CALIBRATION_TIMER;
-
     /* Configure Timer to interrupt at the requested rate. */
-    halTimer_initTimer(timerId, CALIBRATION_TIMER_PRESCALER, HAL_TIMER_CLKSELINTCLK,
-                       (1000000 * (64 >> HAL_GET_MCU_CLOCK_SPEED()) / CALIBRATION_TIMER_RATE_HZ / (1 << CALIBRATION_TIMER_PRESCALER) / 2) - 1UL,
-                       gpHal_CalibrationPending,
-                       true);
-    halTimer_startTimer(timerId);
+    halTimer_initTimer(HAL_CALIBRATION_TIMER, CALIBRATION_TIMER_PRESCALER, HAL_TIMER_CLKSELINTCLK,
+                       (1000000 * (64 >> HAL_GET_MCU_CLOCK_SPEED()) / CALIBRATION_TIMER_RATE_HZ /
+                        (1 << CALIBRATION_TIMER_PRESCALER) / 2) -
+                           1UL,
+                       gpHal_CalibrationPending, true);
+    halTimer_startTimer(HAL_CALIBRATION_TIMER);
 }
 #endif
 
@@ -210,7 +214,7 @@ static void Hal_TimeBasedCalibration(void)
 
 static void Hal_TemperatureBasedCalibration(void)
 {
-    Q8_8 currentTemperature;
+    Q8_8 currentTemperature = 0;
     UIntLoop i;
     gpHal_CalibrationFlags_t flags;
     Bool recal;
@@ -218,6 +222,8 @@ static void Hal_TemperatureBasedCalibration(void)
 
 #if defined(GP_COMP_HALCORTEXM4) 
     currentTemperature = halADC_MeasureTemperature();
+#endif // GP_COMP_HALCORTEXM4
+
     if (currentTemperature != GP_HAL_ADC_INVALID_TEMPERATURE)
     {
         if (temperatureMeasurementCounter < NOF_TEMP_MEASUREMENTS_TO_AVG)
@@ -240,12 +246,6 @@ static void Hal_TemperatureBasedCalibration(void)
         // temperature reading did not succeed, return
         return;
     }
-#else  // (GP_COMP_HALCORTEXM4) && (!defined(GP_DIVERSITY_GPHAL_XP4001))
-
-    currentTemperature = 0;
-    lastMeasuredTemperature = 0;
-
-#endif // (GP_COMP_HALCORTEXM4) && (!defined(GP_DIVERSITY_GPHAL_XP4001))
 
     // Loop over calibration tasks.
     for (i = 0; i < HalCalibration_NrOfTasks; i++)
@@ -276,7 +276,6 @@ static void Hal_TemperatureBasedCalibration(void)
         }
     }
 }
-
 
 /*****************************************************************************
  *                    Public Function Definitions
@@ -309,12 +308,9 @@ void gpHal_InitCalibration(void)
 {
     HalCalibration_NrOfTasks = 0;
     HalCalibration_PendingOnWakeup = 0;
-    gpHal_CalibrationSetFirstAfterWakeup(false);
-
 
     temperatureMeasurementCounter = 0;
     temperatureSum = 0;
-
 }
 
 UInt8 gpHal_CalibrationCreateTask(
@@ -349,6 +345,7 @@ UInt8 gpHal_CalibrationCreateTask(
 #endif //GP_COMP_HALCORTEXM4
         HalCalibration_NextCheckTime = currentTime + GP_HAL_CALIBRATION_CHECK_INTERVAL_US;
     }
+
     // Add task to the list
     taskId = HalCalibration_NrOfTasks;
     HalCalibration_TaskInfo[taskId].task = *pTask;
@@ -380,7 +377,7 @@ UInt8 gpHal_CalibrationCreateTask(
         // Setup for next calibration.
         HalCalibration_TaskInfo[taskId].task.temperature  = lastMeasuredTemperature;
         // Calibrate.
-        GP_LOG_PRINTF("Calibrate %u", 0, i);
+        GP_LOG_PRINTF("Calibrate %u", 0, taskId);
         HalCalibration_TaskInfo[taskId].cbHandler(&HalCalibration_TaskInfo[taskId].task);
     }
     return taskId;
